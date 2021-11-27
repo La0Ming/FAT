@@ -1,10 +1,15 @@
 #include <iostream>
 #include "fs.h"
 #include "cstring"
+#include <vector>
+#include <bitset>
+#include <sstream>
 
 FS::FS()
 {
     std::cout << "FS::FS()... Creating file system\n";
+    fat[ROOT_BLOCK] = FAT_EOF;
+    fat[FAT_BLOCK] = FAT_EOF;
 }
 
 FS::~FS()
@@ -16,7 +21,7 @@ void FS::find_free(int16_t first)
 {
     for(; first < BLOCK_SIZE/2; first++)
     {
-        if(first == FAT_FREE)
+        if(fat[first] == FAT_FREE)
         {
             break;
         }
@@ -32,6 +37,7 @@ FS::format()
     fat[FAT_BLOCK] = FAT_EOF;
     for(unsigned int i = 2; i < BLOCK_SIZE/2; i++)
     {
+        disk.write(i, nullptr);
         fat[i] = FAT_FREE;
     }
 
@@ -44,8 +50,8 @@ int
 FS::create(std::string filepath)
 {
     std::cout << "FS::create(" << filepath << ")\n";
-    int16_t pos = 0;
-    std::string data = "";
+    int16_t pos = 2;
+    char data[BLOCK_SIZE];
     dir_entry file;
 
     // Need to fix data
@@ -55,19 +61,18 @@ FS::create(std::string filepath)
     file.access_rights = READ;
     find_free(pos);
     file.first_blk = pos;
-    file.size = sizeof(file);
+    std::cout << "first_blk: " << file.first_blk << std::endl;
+    file.size = sizeof(data);
     if(file.size > BLOCK_SIZE)
     {
-        find_free(++pos);
-        fat[file.first_blk] = pos; // KOLLA SÅ RÄTT POS
         unsigned int res = file.size / BLOCK_SIZE - 1;
 
         if(file.size % BLOCK_SIZE != 0)
         {
-            res--;            
+            res++;            
         }
 
-        for(res; res >= 0; res--)
+        for(res; res > 0; res--)
         {
             find_free(++pos);
             fat[pos] = pos;
@@ -78,6 +83,7 @@ FS::create(std::string filepath)
     }
     else
     {
+        disk.write(file.first_blk, reinterpret_cast<uint8_t *>(data));
         fat[file.first_blk] = FAT_EOF;
     }
 
@@ -89,6 +95,12 @@ int
 FS::cat(std::string filepath)
 {
     std::cout << "FS::cat(" << filepath << ")\n";
+    char buffer[BLOCK_SIZE];
+    uint16_t blkNr = 2;
+
+    disk.read(blkNr, reinterpret_cast<uint8_t *>(buffer));
+    std::cout << buffer << std::endl;
+
     return 0;
 }
 
