@@ -5,6 +5,7 @@
 #include <vector>
 #include <iterator>
 #include <string>
+#include <sstream>
 
 FS::FS()
 {
@@ -34,11 +35,14 @@ FS::format()
     std::cout << "FS::format()\n";
     fat[ROOT_BLOCK] = FAT_EOF;
     fat[FAT_BLOCK] = FAT_EOF;
-    disk.write(0, nullptr);
+    dir_entry empty;
+    std::string empty_filename = "";
+    std::strcpy(empty.file_name, empty_filename.c_str());
+    disk.write(0, (uint8_t*)&empty);
     for(unsigned int i = 2; i < BLOCK_SIZE/2; i++)
     {
         fat[i] = FAT_FREE;
-        disk.write(i, nullptr);
+        disk.write(i, (uint8_t*)nullptr);
     }
     return 0;
 }
@@ -98,22 +102,29 @@ FS::create(std::string filepath)
     test = data.substr(k, BLOCK_SIZE);
     std::copy(test.begin(), test.end(), std::begin(blk));
     disk.write(i, blk);
-    //
-    // Nedanstående är fel
-    //
+
+    //dir_entry arr_file[BLOCK_SIZE];
+    //memcpy(arr_file, fat[0], 2);
+
     disk.read(0, blk);
-    //std::string kalle((char*)blk);
-    disk.write(0, (uint8_t*)&file); //måste göra så att vi inte skriver över innehållet 
-    if(blk[BLOCK_SIZE] < BLOCK_SIZE){
-        //std::string tmp(blk);
-        //strcpy_s(file.)
-        
+    dir_entry arr_file[BLOCK_SIZE];
+    std::string kalle;
+    if(sizeof(blk))
+    memcpy(arr_file, blk, sizeof());
+
+    for(int t=0; t < BLOCK_SIZE; t++){
+        std::stringstream ss;
+        char *len = arr_file[t].file_name;
+        ss.str(len);
+        kalle = ss.str();
+        std::cout << kalle << std::endl;
+        printf("%ld \n",strlen(len));
+        if(strlen(len) == 0){
+            arr_file[t] = file;
+            break;
+        }
     }
-    else{
-        int check = sizeof(blk) + sizeof(file);
-        printf("%d \n", check);
-        std::cout << "too many files" << std::endl;
-    }
+    disk.write(0, (uint8_t*)&arr_file); //måste göra så att vi inte skriver över innehållet 
     return 0;
 }
 
@@ -122,10 +133,45 @@ int
 FS::cat(std::string filepath)
 {
     std::cout << "FS::cat(" << filepath << ")\n";
+    int t = 0;
+    int blk_nmr = -1;
+    std::string kalle;
     uint8_t blk[BLOCK_SIZE] = "";
-    disk.read(2, blk);
-    std::string kalle((char*)blk);
-    std::cout << kalle << std::endl;
+    
+    //read root block
+    disk.read(0, blk);
+    dir_entry arr_file[BLOCK_SIZE];
+    memcpy(arr_file, blk, BLOCK_SIZE);
+    for(int i=0; i< 10; i++){
+        std::stringstream ss;
+        ss.str(arr_file[i].file_name);
+        kalle = ss.str();
+        std::cout << kalle << std::endl;
+    }
+    //search for the filename
+    for(t=0; t < BLOCK_SIZE; t++){
+        if(arr_file[t].file_name == filepath){
+            blk_nmr = arr_file[t].first_blk;
+            break;
+        }
+    }
+
+    std::cout << std::to_string(blk_nmr) << std::endl;
+    if(blk_nmr != -1){
+        while(fat[blk_nmr] != FAT_EOF){
+            disk.read(blk_nmr, blk);
+            std::string kalle((char*)blk);
+            std::cout << kalle << std::endl;
+            blk_nmr = fat[blk_nmr];
+        }
+        disk.read(blk_nmr, blk);
+
+        std::string kalle((char*)blk);
+        std::cout << kalle << std::endl;
+    }
+    else{
+        std::cout << "file not found" << std::endl;
+    }
     return 0;
 }
 
@@ -134,6 +180,17 @@ int
 FS::ls()
 {
     std::cout << "FS::ls()\n";
+    uint8_t blk[BLOCK_SIZE] = "";
+    
+    disk.read(0, blk);
+    dir_entry arr_file[BLOCK_SIZE];
+    memcpy(arr_file, blk, BLOCK_SIZE);
+    for(int t=0; t < BLOCK_SIZE; t++){
+        std::cout << arr_file[t].file_name << std::endl;
+        if(strlen(arr_file[t].file_name) == 0){
+            break;
+        }
+    }
     return 0;
 }
 
