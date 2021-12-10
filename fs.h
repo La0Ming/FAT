@@ -16,6 +16,8 @@
 #define WRITE 0x02
 #define EXECUTE 0x01
 
+#define MAX_NO_FILES 64
+
 struct dir_entry {
     char file_name[56]; // name of the file / sub-directory
     uint32_t size; // size of the file in bytes
@@ -29,7 +31,9 @@ private:
     Disk disk;
     // size of a FAT entry is 2 bytes
     int16_t fat[BLOCK_SIZE/2];
-    void find_free(int16_t first);
+    dir_entry files[MAX_NO_FILES];
+    unsigned int file_pos;
+    void find_free(int16_t &first);
 
 public:
     FS();
