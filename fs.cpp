@@ -1,30 +1,32 @@
 #include <iostream>
 #include "fs.h"
 #include "cstring"
-#include <vector>
-#include <bitset>
-#include <sstream>
 
 FS::FS()
+: file_pos(0)
 {
     std::cout << "FS::FS()... Creating file system\n";
-    fat[ROOT_BLOCK] = FAT_EOF;
-    fat[FAT_BLOCK] = FAT_EOF;
+
+    // Fill fat from disk
+    disk.read(0, (uint8_t*)files);
+    disk.read(1, (uint8_t*)fat);
+    while(file_pos < MAX_NO_FILES && strcmp(files[file_pos].file_name, "") != 0)
+    {
+        file_pos++;
+    }
 }
 
 FS::~FS()
 {
-
+    disk.write(0, (uint8_t*)files);
+    disk.write(1, (uint8_t*)fat);
 }
 
-void FS::find_free(int16_t first)
+void FS::find_free(int16_t &first)
 {
-    for(; first < BLOCK_SIZE/2; first++)
+    while(first < BLOCK_SIZE/2 && fat[first] != FAT_FREE)
     {
-        if(fat[first] == FAT_FREE)
-        {
-            break;
-        }
+        first++;
     }
 }
 
@@ -33,13 +35,20 @@ int
 FS::format()
 {
     std::cout << "FS::format()\n";
+    char data[1] = "";
     fat[ROOT_BLOCK] = FAT_EOF;
     fat[FAT_BLOCK] = FAT_EOF;
     for(unsigned int i = 2; i < BLOCK_SIZE/2; i++)
     {
-        disk.write(i, nullptr);
+        disk.write(i, (uint8_t*)data);
         fat[i] = FAT_FREE;
     }
+
+    for (unsigned int i = 0; i < MAX_NO_FILES; i++)
+    {
+        strcpy(files[i].file_name, data);
+    }
+    file_pos = 0;
 
     return 0;
 }
@@ -49,43 +58,51 @@ FS::format()
 int
 FS::create(std::string filepath)
 {
-    std::cout << "FS::create(" << filepath << ")\n";
-    int16_t pos = 2;
-    char data[BLOCK_SIZE];
-    dir_entry file;
-
-    // Need to fix data
-    std::cin >> data;
-    std::strcpy(file.file_name, filepath.c_str());
-    file.type = TYPE_FILE;
-    file.access_rights = READ;
-    find_free(pos);
-    file.first_blk = pos;
-    std::cout << "first_blk: " << file.first_blk << std::endl;
-    file.size = sizeof(data);
-    if(file.size > BLOCK_SIZE)
+    if(file_pos < MAX_NO_FILES)
     {
-        unsigned int res = file.size / BLOCK_SIZE - 1;
+        std::cout << "FS::create(" << filepath << ")\n";
+        int16_t pos = 2;
+        char data[BLOCK_SIZE];
+        dir_entry file;
 
-        if(file.size % BLOCK_SIZE != 0)
+        // Need to fix data
+        std::cin >> data;
+        std::strcpy(file.file_name, filepath.c_str());
+        file.type = TYPE_FILE;
+        file.access_rights = READ;
+        find_free(pos);
+        file.first_blk = pos;
+        disk.write(file.first_blk, (uint8_t*)data);
+        files[file_pos++] = file;
+        if(file.size > BLOCK_SIZE && file.size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
         {
-            res++;            
-        }
+            unsigned int res = file.size / BLOCK_SIZE - 1;
 
-        for(res; res > 0; res--)
-        {
+            if(file.size % BLOCK_SIZE != 0)
+            {
+                res++;            
+            }
+
+            for(res; res > 0; res--)
+            {
+                find_free(++pos);
+                fat[pos] = pos;
+                disk.write(pos, (uint8_t*)data);
+            }
+
             find_free(++pos);
-            fat[pos] = pos;
+            fat[pos] = FAT_EOF;
+            disk.write(pos, (uint8_t*)data);
         }
-
-        find_free(++pos);
-        fat[pos] = FAT_EOF;
+        else
+        {
+            fat[file.first_blk] = FAT_EOF;
+        }
     }
     else
     {
-        disk.write(file.first_blk, reinterpret_cast<uint8_t *>(data));
-        fat[file.first_blk] = FAT_EOF;
-    }
+        std::cout << "Disk has no more room for additional data" << std::endl;
+    }   
 
     return 0;
 }
@@ -94,12 +111,37 @@ FS::create(std::string filepath)
 int
 FS::cat(std::string filepath)
 {
+    bool found = false;
     std::cout << "FS::cat(" << filepath << ")\n";
     char buffer[BLOCK_SIZE];
-    uint16_t blkNr = 2;
+    unsigned int i = 0;
 
-    disk.read(blkNr, reinterpret_cast<uint8_t *>(buffer));
-    std::cout << buffer << std::endl;
+    while(i <= file_pos)
+    {
+        if(strcmp(files[i].file_name, filepath.c_str()) == 0)
+        {
+            found = true;
+            break;
+        }
+        i++;
+    }
+
+    if(found)
+    {
+        uint16_t blk_no = files[i].first_blk;
+        while(fat[blk_no] != FAT_EOF)
+        {
+            disk.read(blk_no, (uint8_t*)buffer);
+            std::cout << buffer;
+            blk_no = fat[blk_no];
+        }
+        disk.read(blk_no, (uint8_t*)buffer);
+        std::cout << buffer << std::endl;
+    }
+    else
+    {
+        std::cout << "cat: " << filepath << ": No such file or directory" << std::endl;
+    }
 
     return 0;
 }
@@ -109,6 +151,14 @@ int
 FS::ls()
 {
     std::cout << "FS::ls()\n";
+    
+    for (unsigned int i = 0; i < file_pos; i++)
+    {
+        std::cout << files[i].file_name << "\t";
+    }
+
+    std::cout << std::endl;
+
     return 0;
 }
 
