@@ -17,10 +17,7 @@ FS::FS()
 }
 
 FS::~FS()
-{
-    disk.write(0, (uint8_t*)files);
-    disk.write(1, (uint8_t*)fat);
-}
+{}
 
 void FS::find_free(int16_t &first)
 {
@@ -49,6 +46,7 @@ FS::format()
         strcpy(files[i].file_name, data);
     }
     file_pos = 0;
+    disk.write(1, (uint8_t*)fat);
 
     return 0;
 }
@@ -58,21 +56,34 @@ FS::format()
 int
 FS::create(std::string filepath)
 {
+    for (unsigned int i = 0; i < file_pos; i++)
+    {
+        // std::cout << "File_name: " << files[i].file_name << std::endl;
+        // std::cout << "c_str: " << filepath.c_str() << std::endl;
+        if (strcmp(files[i].file_name, filepath.c_str()) == 0)
+        {
+            std::cout << "File name already taken. Please pick another." << std::endl;
+
+            return -1;
+        }    
+    }
+    
     if(file_pos < MAX_NO_FILES)
     {
         std::cout << "FS::create(" << filepath << ")\n";
         int16_t pos = 2;
-        char data[BLOCK_SIZE];
+        std::string data;
         dir_entry file;
 
         // Need to fix data
-        std::cin >> data;
-        std::strcpy(file.file_name, filepath.c_str());
+        std::getline(std::cin, data);
+        file.size = data.size();
+        std::strcpy(file.file_name, filepath.c_str()); // TODO: Add condition for files with same name
         file.type = TYPE_FILE;
         file.access_rights = READ;
         find_free(pos);
         file.first_blk = pos;
-        disk.write(file.first_blk, (uint8_t*)data);
+        disk.write(file.first_blk, (uint8_t*)data.c_str());
         files[file_pos++] = file;
         if(file.size > BLOCK_SIZE && file.size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
         {
@@ -87,21 +98,26 @@ FS::create(std::string filepath)
             {
                 find_free(++pos);
                 fat[pos] = pos;
-                disk.write(pos, (uint8_t*)data);
+                disk.write(pos, (uint8_t*)data.c_str());
             }
 
             find_free(++pos);
             fat[pos] = FAT_EOF;
-            disk.write(pos, (uint8_t*)data);
+            disk.write(pos, (uint8_t*)data.c_str());
         }
         else
         {
             fat[file.first_blk] = FAT_EOF;
         }
+
+        disk.write(0, (uint8_t*)files);
+        disk.write(1, (uint8_t*)fat);
     }
     else
     {
         std::cout << "Disk has no more room for additional data" << std::endl;
+
+        return -1;
     }   
 
     return 0;
@@ -151,13 +167,12 @@ int
 FS::ls()
 {
     std::cout << "FS::ls()\n";
+    std::cout << "name\tsize" << std::endl;
     
     for (unsigned int i = 0; i < file_pos; i++)
     {
-        std::cout << files[i].file_name << "\t";
+        std::cout << files[i].file_name << "\t" << files[i].size << std::endl;
     }
-
-    std::cout << std::endl;
 
     return 0;
 }
