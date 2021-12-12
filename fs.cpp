@@ -27,6 +27,19 @@ void FS::find_free(int16_t &first)
     }
 }
 
+int FS::find_file(std::string path)
+{
+    for (unsigned int i = 0; i < file_pos; i++)
+    {
+        if (strcmp(files[i].file_name, path.c_str()) == 0)
+        {
+            return i;
+        }    
+    }
+
+    return -1;
+}
+
 // formats the disk, i.e., creates an empty file system
 int
 FS::format()
@@ -45,7 +58,9 @@ FS::format()
     {
         strcpy(files[i].file_name, data);
     }
+
     file_pos = 0;
+    disk.write(0, (uint8_t*)files);
     disk.write(1, (uint8_t*)fat);
 
     return 0;
@@ -56,69 +71,63 @@ FS::format()
 int
 FS::create(std::string filepath)
 {
-    for (unsigned int i = 0; i < file_pos; i++)
+    std::cout << "FS::create(" << filepath << ")\n";
+    if(find_file(filepath) + 1)
     {
-        // std::cout << "File_name: " << files[i].file_name << std::endl;
-        // std::cout << "c_str: " << filepath.c_str() << std::endl;
-        if (strcmp(files[i].file_name, filepath.c_str()) == 0)
-        {
-            std::cout << "File name already taken. Please pick another." << std::endl;
-
-            return -1;
-        }    
-    }
-    
-    if(file_pos < MAX_NO_FILES)
-    {
-        std::cout << "FS::create(" << filepath << ")\n";
-        int16_t pos = 2;
-        std::string data;
-        dir_entry file;
-
-        // Need to fix data
-        std::getline(std::cin, data);
-        file.size = data.size();
-        std::strcpy(file.file_name, filepath.c_str()); // TODO: Add condition for files with same name
-        file.type = TYPE_FILE;
-        file.access_rights = READ;
-        find_free(pos);
-        file.first_blk = pos;
-        disk.write(file.first_blk, (uint8_t*)data.c_str());
-        files[file_pos++] = file;
-        if(file.size > BLOCK_SIZE && file.size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
-        {
-            unsigned int res = file.size / BLOCK_SIZE - 1;
-
-            if(file.size % BLOCK_SIZE != 0)
-            {
-                res++;            
-            }
-
-            for(res; res > 0; res--)
-            {
-                find_free(++pos);
-                fat[pos] = pos;
-                disk.write(pos, (uint8_t*)data.c_str());
-            }
-
-            find_free(++pos);
-            fat[pos] = FAT_EOF;
-            disk.write(pos, (uint8_t*)data.c_str());
-        }
-        else
-        {
-            fat[file.first_blk] = FAT_EOF;
-        }
-
-        disk.write(0, (uint8_t*)files);
-        disk.write(1, (uint8_t*)fat);
+        std::cout << "create: cannot create file '" << filepath << "': File exists" << std::endl;
     }
     else
     {
-        std::cout << "Disk has no more room for additional data" << std::endl;
+        if(file_pos < MAX_NO_FILES)
+        {
+            int16_t pos = 2;
+            std::string data = "";
+            dir_entry file;
 
-        return -1;
-    }   
+            std::getline(std::cin, data);
+            file.size = data.size();
+            std::strcpy(file.file_name, filepath.c_str());
+            file.type = TYPE_FILE;
+            file.access_rights = READ;
+            find_free(pos);
+            file.first_blk = pos;
+            disk.write(file.first_blk, (uint8_t*)data.substr(0, BLOCK_SIZE).c_str());
+            files[file_pos++] = file;
+            if(file.size > BLOCK_SIZE && file.size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
+            {
+                unsigned int res = file.size / BLOCK_SIZE - 1;
+
+                if(file.size % BLOCK_SIZE != 0)
+                {
+                    res++;            
+                }
+
+                unsigned int next = 2;
+
+                for(res; res > 0; res--)
+                {
+                    find_free(++pos);
+                    fat[pos] = pos;
+                    disk.write(pos, (uint8_t*)data.substr(0, BLOCK_SIZE * next++).c_str());
+                }
+
+                find_free(++pos);
+                fat[pos] = FAT_EOF;
+                disk.write(pos, (uint8_t*)data.substr(0, BLOCK_SIZE * next).c_str());
+            }
+            else
+            {
+                fat[file.first_blk] = FAT_EOF;
+            }
+
+            disk.write(0, (uint8_t*)files);
+            disk.write(1, (uint8_t*)fat);
+        }
+        else
+        {
+            std::cout << "Disk has no more room for additional data" << std::endl;
+        }
+    } 
 
     return 0;
 }
@@ -127,22 +136,11 @@ FS::create(std::string filepath)
 int
 FS::cat(std::string filepath)
 {
-    bool found = false;
     std::cout << "FS::cat(" << filepath << ")\n";
     char buffer[BLOCK_SIZE];
-    unsigned int i = 0;
+    unsigned int i = find_file(filepath);
 
-    while(i <= file_pos)
-    {
-        if(strcmp(files[i].file_name, filepath.c_str()) == 0)
-        {
-            found = true;
-            break;
-        }
-        i++;
-    }
-
-    if(found)
+    if(i + 1)
     {
         uint16_t blk_no = files[i].first_blk;
         while(fat[blk_no] != FAT_EOF)

@@ -34,6 +34,7 @@ private:
     dir_entry files[MAX_NO_FILES];
     unsigned int file_pos;
     void find_free(int16_t &first);
+    int find_file(std::string path);
 
 public:
     FS();
