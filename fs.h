@@ -16,6 +16,8 @@
 #define WRITE 0x02
 #define EXECUTE 0x01
 
+#define MAX_NO_FILES 64
+
 struct dir_entry {
     char file_name[56]; // name of the file / sub-directory
     uint32_t size; // size of the file in bytes
@@ -24,12 +26,23 @@ struct dir_entry {
     uint8_t access_rights; // read (0x04), write (0x02), execute (0x01)
 };
 
+struct sub_dir {
+    //sub_dir* parent = nullptr;
+    dir_entry files[MAX_NO_FILES];
+    int blk_nmr;
+    //sub_dir* children[2] = {nullptr};
+};
+
 class FS {
 private:
     Disk disk;
     // size of a FAT entry is 2 bytes
     int16_t fat[BLOCK_SIZE/2];
-    void find_free(int16_t first);
+    sub_dir current_dir;
+    unsigned int file_pos;
+    void find_free(int16_t &first);
+    int find_file(std::string path);
+    int find_free_current_dir();
 
 public:
     FS();
