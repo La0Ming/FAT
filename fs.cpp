@@ -103,7 +103,7 @@ FS::create(std::string filepath)
             file.size = data.size();
             std::strcpy(file.file_name, filepath.c_str());
             file.type = TYPE_FILE;
-            file.access_rights = READ;
+            file.access_rights = (READ | WRITE);
             find_free(pos);
             file.first_blk = pos;
             disk.write(file.first_blk, (uint8_t*)data.substr(0, BLOCK_SIZE - 1).c_str());
@@ -184,8 +184,10 @@ FS::ls()
 {
     std::cout << "FS::ls()\n";
 
-    std::cout << "name\ttype\tsize" << std::endl;
+    std::cout << "name\t\ttype\t\taccessrights\t\tsize" << std::endl;
 
+    std::string type = "dir";
+    std::string size = "-";
     unsigned int i = 1;
 
     if(current_blk == ROOT_BLOCK)
@@ -197,6 +199,7 @@ FS::ls()
     {
         std::string type = "dir";
         std::string size = "-";
+        char rights[3] = {'-', '-', '-'};
         
         if(files[i].type == TYPE_FILE)
         {
@@ -204,7 +207,22 @@ FS::ls()
             size = std::to_string(files[i].size);
         }
 
-        std::cout << files[i].file_name << "\t" << type << "\t" << size << std::endl;
+        if(files[i].access_rights & READ)
+        {
+            rights[0] = 'r';
+            rights[1] = '-';
+        }
+        if(files[i].access_rights & WRITE)
+        {
+            rights[1] = 'w';
+            rights[2] = '-';
+        }
+        if(files[i].access_rights & EXECUTE)
+        {
+            rights[2] = 'x';
+        }
+
+        std::cout << files[i].file_name << "\t\t" << type << "\t\t" << rights << "\t\t\t" << size << std::endl;
     }
 
     return 0;
@@ -284,7 +302,7 @@ FS::cp(std::string sourcepath, std::string destpath)
                 std::strcpy(file.file_name, destpath.c_str());
                 file.size = files[src_pos].size;
                 file.type = TYPE_FILE;
-                file.access_rights = READ;
+                file.access_rights = (READ | WRITE);
                 int16_t pos = 2;
                 find_free(pos);
                 file.first_blk = pos;
@@ -404,7 +422,7 @@ FS::rm(std::string filepath)
                 cd("..");
                 char empty[1] = "";
                 disk.write(files[pos].first_blk, (uint8_t*)empty);
-                // reorganize
+
                 for (; pos < file_pos; pos++)
                 {
                     files[pos] = files[pos + 1];
@@ -546,7 +564,7 @@ FS::mkdir(std::string dirpath)
         fat[pos] = FAT_EOF;
 
         sub_dir.type = TYPE_DIR;
-        sub_dir.access_rights = READ;
+        sub_dir.access_rights = (READ | WRITE);
         files[file_pos++] = sub_dir;
 
         dir_entry sub_dir_files[MAX_NO_FILES];
@@ -557,7 +575,7 @@ FS::mkdir(std::string dirpath)
         strcpy(sub_dir_files[0].file_name, "..");
         sub_dir_files[0].first_blk = current_blk;
         sub_dir_files[0].type = TYPE_DIR;
-        sub_dir_files[0].access_rights = READ;
+        sub_dir_files[0].access_rights = (READ | WRITE);
 
         disk.write(sub_dir.first_blk, (uint8_t*)sub_dir_files);
         disk.write(current_blk, (uint8_t*)files);
@@ -636,19 +654,27 @@ int
 FS::chmod(std::string accessrights, std::string filepath)
 {
     std::cout << "FS::chmod(" << accessrights << "," << filepath << ")\n";
+
     int entry = find_entry(filepath);
-    if(entry == -1){
-        std::cout << "something" << std::endl;
+
+    if(entry == -1)
+    {
+        std::cout << "chmod: " << filepath << ": No such file or directory" << std::endl;
     }
-    else{
+    else
+    {
         uint8_t access_int = std::stoi(accessrights);
-        if(access_int >=0 && access_int <= READ+WRITE+EXECUTE){
+
+        if(access_int >=0 && access_int <= (READ|WRITE|EXECUTE))
+        {
             files[entry].access_rights = access_int;
+            disk.write(current_blk, (uint8_t*)files);
         }
-        else{
-            std::cout << "unavailable accessright" << std::endl;
+        else
+        {
+            std::cout << "chmod: invalid access right" << std::endl;
         }
     }
-    
+
     return 0;
 }
