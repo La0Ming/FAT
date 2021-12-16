@@ -1,6 +1,8 @@
 #include <iostream>
 #include <cstdint>
 #include "disk.h"
+#include <vector>
+#include <map>
 
 #ifndef __FS_H__
 #define __FS_H__
@@ -26,23 +28,20 @@ struct dir_entry {
     uint8_t access_rights; // read (0x04), write (0x02), execute (0x01)
 };
 
-struct sub_dir {
-    //sub_dir* parent = nullptr;
-    dir_entry files[MAX_NO_FILES];
-    int blk_nmr;
-    //sub_dir* children[2] = {nullptr};
-};
-
 class FS {
 private:
     Disk disk;
     // size of a FAT entry is 2 bytes
     int16_t fat[BLOCK_SIZE/2];
-    sub_dir current_dir;
+    //dir_entry files[MAX_NO_FILES];
+    dir_entry files[MAX_NO_FILES];
     unsigned int file_pos;
+    std::string cwd;
+    uint16_t current_blk;
+
     void find_free(int16_t &first);
-    int find_file(std::string path);
-    int find_free_current_dir();
+    int find_entry(const std::string path);
+    int find_file(std::string &path);
 
 public:
     FS();
