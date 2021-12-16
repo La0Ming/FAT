@@ -2,6 +2,7 @@
 #include <cstdint>
 #include "disk.h"
 #include <vector>
+#include <map>
 
 #ifndef __FS_H__
 #define __FS_H__
@@ -33,22 +34,12 @@ private:
     // size of a FAT entry is 2 bytes
     int16_t fat[BLOCK_SIZE/2];
     //dir_entry files[MAX_NO_FILES];
-
-    struct Node
-    {
-        dir_entry key;
-        std::vector<Node*> children;
-        std::string cwd;
-    };
     dir_entry files[MAX_NO_FILES];
-    Node* root;
     unsigned int file_pos;
+    std::string cwd;
+    uint16_t current_blk;
     void find_free(int16_t &first);
     int find_entry(const std::string path);
-    void allocator(Node *&n);
-    void garbage_collector(Node *&n);
-    void build_tree();
-    void sort(std::vector<Node*> children);
 
 public:
     FS();
