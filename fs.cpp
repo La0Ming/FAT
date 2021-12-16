@@ -261,12 +261,12 @@ FS::cp(std::string sourcepath, std::string destpath)
     }
     else
     {
-        bool check1 = (files[src_pos].access_rights & READ);
-        if(check1 == true){
+        if(files[src_pos].access_rights & READ)
+        {
             if(dest_pos + 1)
             {
-                bool check2 = files[dest_pos].access_rights & WRITE;
-                if(check2 == true){
+                if(files[dest_pos].access_rights & WRITE)
+                {
                     if(files[src_pos].type)
                     {
                         std::cout << "cp: " << files[src_pos].file_name << ": Is a directory" << std::endl;
@@ -310,12 +310,13 @@ FS::cp(std::string sourcepath, std::string destpath)
                         }
                         else
                         {
-                            std::cout << "Disk has no more room for additional data" << std::endl;
+                            std::cout << "cp: Disk has no more room for additional data" << std::endl;
                         }
                     }
                 }
-                else{
-                    std::cout << "no access rights" << std::endl;
+                else
+                {
+                    std::cout << "cp: cannot open '" << destpath << "' for writing: Permission denied" << std::endl;
                 }
             }
             else
@@ -326,7 +327,7 @@ FS::cp(std::string sourcepath, std::string destpath)
                     std::strcpy(file.file_name, destpath.c_str());
                     file.size = files[src_pos].size;
                     file.type = TYPE_FILE;
-                    file.access_rights = READ + WRITE;
+                    file.access_rights = (READ | WRITE);
                     int16_t pos = 2;
                     find_free(pos);
                     file.first_blk = pos;
@@ -364,7 +365,7 @@ FS::cp(std::string sourcepath, std::string destpath)
                 }
                 else
                 {
-                    std::cout << "Disk has no more room for additional data" << std::endl;
+                    std::cout << "cp: Disk has no more room for additional data" << std::endl;
                 }
             }
         }
@@ -393,21 +394,24 @@ FS::mv(std::string sourcepath, std::string destpath)
         {
             if(files[dest_pos].type == TYPE_DIR)
             {
-                // Add file to sub-directory
-                dir_entry file;
-                file = files[src_pos];
-                cd(files[dest_pos].file_name);
-                files[file_pos++] = file;
-                disk.write(current_blk, (uint8_t*)files);
-
-                // Remove file from current directory
-                cd("..");
-                for(; src_pos < file_pos; src_pos++)
+                if(files[dest_pos].access_rights & WRITE)
                 {
-                    files[src_pos] = files[src_pos + 1];
+                    // Add file to sub-directory
+                    dir_entry file;
+                    file = files[src_pos];
+                    cd(files[dest_pos].file_name);
+                    files[file_pos++] = file;
+                    disk.write(current_blk, (uint8_t*)files);
+
+                    // Remove file from current directory
+                    cd("..");
+                    for(; src_pos < file_pos; src_pos++)
+                    {
+                        files[src_pos] = files[src_pos + 1];
+                    }
+                    file_pos--;
+                    disk.write(current_blk, (uint8_t*)files);
                 }
-                file_pos--;
-                disk.write(current_blk, (uint8_t*)files);
             }
             else
             {
@@ -521,48 +525,65 @@ FS::append(std::string filepath1, std::string filepath2)
         {
             std::cout << "append: " << filepath1 << ": Is a directory" << std::endl;
         }
-        else if(files[dest_pos].type == TYPE_DIR)
-        {
-            std::cout << "append: " << filepath2 << ": Is a directory" << std::endl;
-        }
         else
         {
-            if(file_pos < MAX_NO_FILES && files[src_pos].size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
+            if(files[dest_pos].type == TYPE_DIR)
             {
-                char buffer[BLOCK_SIZE] = {""};
-                int16_t dest_blk_no = files[dest_pos].first_blk;
-
-                while(fat[dest_blk_no] != FAT_EOF)
-                {
-                    dest_blk_no = fat[dest_blk_no];
-                }
-
-                int16_t src_blk_no = files[src_pos].first_blk;
-                int16_t prev_pos = dest_blk_no;
-                find_free(++dest_blk_no);
-                fat[prev_pos] = dest_blk_no;
-
-                while(fat[src_blk_no] != FAT_EOF)
-                {
-                    disk.read(src_blk_no, (uint8_t*)buffer);
-                    disk.write(dest_blk_no, (uint8_t*)buffer);
-                    files[dest_pos].size += strlen(buffer);
-                    src_blk_no = fat[src_blk_no];
-                    int16_t prev_pos = dest_blk_no;
-                    find_free(++dest_blk_no);
-                    fat[prev_pos] = dest_blk_no;
-                }
-
-                disk.read(src_blk_no, (uint8_t*)buffer);
-                disk.write(dest_blk_no, (uint8_t*)buffer);
-                files[dest_pos].size += strlen(buffer);
-                fat[dest_blk_no] = FAT_EOF;
-                disk.write(0, (uint8_t*)files);
-                disk.write(1, (uint8_t*)fat);
+                std::cout << "append: " << filepath2 << ": Is a directory" << std::endl;
             }
             else
             {
-                std::cout << "Disk has no more room for additional data" << std::endl;
+                if(files[src_pos].access_rights & READ)
+                {
+                    if(files[dest_pos].access_rights & WRITE)
+                    {
+                        if(file_pos < MAX_NO_FILES && files[src_pos].size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
+                        {
+                            char buffer[BLOCK_SIZE] = {""};
+                            int16_t dest_blk_no = files[dest_pos].first_blk;
+
+                            while(fat[dest_blk_no] != FAT_EOF)
+                            {
+                                dest_blk_no = fat[dest_blk_no];
+                            }
+
+                            int16_t src_blk_no = files[src_pos].first_blk;
+                            int16_t prev_pos = dest_blk_no;
+                            find_free(++dest_blk_no);
+                            fat[prev_pos] = dest_blk_no;
+
+                            while(fat[src_blk_no] != FAT_EOF)
+                            {
+                                disk.read(src_blk_no, (uint8_t*)buffer);
+                                disk.write(dest_blk_no, (uint8_t*)buffer);
+                                files[dest_pos].size += strlen(buffer);
+                                src_blk_no = fat[src_blk_no];
+                                int16_t prev_pos = dest_blk_no;
+                                find_free(++dest_blk_no);
+                                fat[prev_pos] = dest_blk_no;
+                            }
+
+                            disk.read(src_blk_no, (uint8_t*)buffer);
+                            disk.write(dest_blk_no, (uint8_t*)buffer);
+                            files[dest_pos].size += strlen(buffer);
+                            fat[dest_blk_no] = FAT_EOF;
+                            disk.write(current_blk, (uint8_t*)files);
+                            disk.write(1, (uint8_t*)fat);
+                        }
+                        else
+                        {
+                            std::cout << "append: Disk has no more room for additional data" << std::endl;
+                        }
+                    }
+                    else
+                    {
+                        std::cout << "append: cannot open '" << filepath2 << "' for writing: Permission denied" << std::endl;
+                    }
+                }
+                else
+                {
+                    std::cout << "append: cannot open '" << filepath1 << "' for reading: Permission denied" << std::endl;
+                }
             }
         }
     }
@@ -577,41 +598,48 @@ FS::mkdir(std::string dirpath)
 {
     std::cout << "FS::mkdir(" << dirpath << ")\n";
 
-    if(find_entry(dirpath) == -1)
+    if(dirpath.size() < 57)
     {
-        dir_entry sub_dir;
-        int16_t pos = 2;
-
-        // Add name
-        strcpy(sub_dir.file_name, dirpath.c_str());
-
-        sub_dir.size = 0;
-
-        // Find available first block
-        find_free(pos);
-        sub_dir.first_blk = pos;
-        fat[pos] = FAT_EOF;
-
-        sub_dir.type = TYPE_DIR;
-        sub_dir.access_rights = (READ | WRITE);
-        files[file_pos++] = sub_dir;
-
-        dir_entry sub_dir_files[MAX_NO_FILES];
-        for(unsigned int i = 1; i < MAX_NO_FILES; i++)
+        if(find_entry(dirpath) == -1)
         {
-            strcpy(sub_dir_files[i].file_name, "");
-        }
-        strcpy(sub_dir_files[0].file_name, "..");
-        sub_dir_files[0].first_blk = current_blk;
-        sub_dir_files[0].type = TYPE_DIR;
-        sub_dir_files[0].access_rights = (READ | WRITE);
+            dir_entry sub_dir;
+            int16_t pos = 2;
 
-        disk.write(sub_dir.first_blk, (uint8_t*)sub_dir_files);
-        disk.write(current_blk, (uint8_t*)files);
+            // Add name
+            strcpy(sub_dir.file_name, dirpath.c_str());
+
+            sub_dir.size = 0;
+
+            // Find available first block
+            find_free(pos);
+            sub_dir.first_blk = pos;
+            fat[pos] = FAT_EOF;
+
+            sub_dir.type = TYPE_DIR;
+            sub_dir.access_rights = (READ | WRITE | EXECUTE);
+            files[file_pos++] = sub_dir;
+
+            dir_entry sub_dir_files[MAX_NO_FILES];
+            for(unsigned int i = 1; i < MAX_NO_FILES; i++)
+            {
+                strcpy(sub_dir_files[i].file_name, "");
+            }
+            strcpy(sub_dir_files[0].file_name, "..");
+            sub_dir_files[0].first_blk = current_blk;
+            sub_dir_files[0].type = TYPE_DIR;
+            sub_dir_files[0].access_rights = (READ | WRITE | EXECUTE);
+
+            disk.write(sub_dir.first_blk, (uint8_t*)sub_dir_files);
+            disk.write(current_blk, (uint8_t*)files);
+        }
+        else
+        {
+            std::cout << "mkdir: cannot create directory '" << dirpath << "': File exists" << std::endl;
+        }
     }
     else
     {
-        std::cout << "mkdir: cannot create directory '" << dirpath << "': File exists" << std::endl;
+        std::cout << "mkdir: " << dirpath << ": file name too big" << std::endl;
     }
 
     return 0;
@@ -627,7 +655,7 @@ FS::cd(std::string dirpath)
 
     if(pos + 1)
     {
-        if(files[pos].type)
+        if(files[pos].type == TYPE_DIR)
         {
             if(dirpath == "..")
             {
