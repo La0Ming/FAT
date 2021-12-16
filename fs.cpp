@@ -404,7 +404,7 @@ FS::rm(std::string filepath)
                 cd("..");
                 char empty[1] = "";
                 disk.write(files[pos].first_blk, (uint8_t*)empty);
-
+                // reorganize
                 for (; pos < file_pos; pos++)
                 {
                     files[pos] = files[pos + 1];
@@ -636,5 +636,19 @@ int
 FS::chmod(std::string accessrights, std::string filepath)
 {
     std::cout << "FS::chmod(" << accessrights << "," << filepath << ")\n";
+    int entry = find_entry(filepath);
+    if(entry == -1){
+        std::cout << "something" << std::endl;
+    }
+    else{
+        uint8_t access_int = std::stoi(accessrights);
+        if(access_int >=0 && access_int <= READ+WRITE+EXECUTE){
+            files[entry].access_rights = access_int;
+        }
+        else{
+            std::cout << "unavailable accessright" << std::endl;
+        }
+    }
+    
     return 0;
 }
