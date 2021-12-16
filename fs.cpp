@@ -103,7 +103,7 @@ FS::create(std::string filepath)
             file.size = data.size();
             std::strcpy(file.file_name, filepath.c_str());
             file.type = TYPE_FILE;
-            file.access_rights = READ;
+            file.access_rights = READ + WRITE;
             find_free(pos);
             file.first_blk = pos;
             disk.write(file.first_blk, (uint8_t*)data.substr(0, BLOCK_SIZE - 1).c_str());
@@ -188,7 +188,7 @@ FS::ls()
 
     std::string type = "dir";
     std::string size = "-";
-    std::string rights = "---";
+    std::string rights = "-";
     unsigned int i = 1;
 
     if(current_blk == ROOT_BLOCK)
@@ -313,7 +313,7 @@ FS::cp(std::string sourcepath, std::string destpath)
                 std::strcpy(file.file_name, destpath.c_str());
                 file.size = files[src_pos].size;
                 file.type = TYPE_FILE;
-                file.access_rights = READ;
+                file.access_rights = READ + WRITE;
                 int16_t pos = 2;
                 find_free(pos);
                 file.first_blk = pos;
@@ -575,7 +575,7 @@ FS::mkdir(std::string dirpath)
         fat[pos] = FAT_EOF;
 
         sub_dir.type = TYPE_DIR;
-        sub_dir.access_rights = READ;
+        sub_dir.access_rights = READ + WRITE;
         files[file_pos++] = sub_dir;
 
         dir_entry sub_dir_files[MAX_NO_FILES];
@@ -586,7 +586,7 @@ FS::mkdir(std::string dirpath)
         strcpy(sub_dir_files[0].file_name, "..");
         sub_dir_files[0].first_blk = current_blk;
         sub_dir_files[0].type = TYPE_DIR;
-        sub_dir_files[0].access_rights = READ;
+        sub_dir_files[0].access_rights = READ + WRITE;
 
         disk.write(sub_dir.first_blk, (uint8_t*)sub_dir_files);
         disk.write(current_blk, (uint8_t*)files);
@@ -665,14 +665,6 @@ int
 FS::chmod(std::string accessrights, std::string filepath)
 {
     std::cout << "FS::chmod(" << accessrights << "," << filepath << ")\n";
-
-    int i = find_entry(filepath) + 1;
-
-    if(find_entry(filepath) + 1)
-    {
-        files[i].access_rights = (uint8_t)accessrights.c_str();
-        std::cout << files[i].access_rights << std::endl;
-    }
 
     return 0;
 }
