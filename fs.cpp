@@ -186,12 +186,9 @@ FS::ls()
 
     std::cout << "name\ttype\taccessrights\tsize" << std::endl;
 
-<<<<<<< HEAD
-=======
     std::string type = "dir";
     std::string size = "-";
     std::string rights = "-";
->>>>>>> notree
     unsigned int i = 1;
 
     if(current_blk == ROOT_BLOCK)
