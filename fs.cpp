@@ -189,7 +189,6 @@ FS::ls()
     std::string type = "dir";
     std::string size = "-";
     unsigned int i = 1;
-    char rights[3] = {'-', '-', '-'};
 
     if(current_blk == ROOT_BLOCK)
     {
@@ -200,6 +199,7 @@ FS::ls()
     {
         std::string type = "dir";
         std::string size = "-";
+        char rights[3] = {'-', '-', '-'};
         
         if(files[i].type == TYPE_FILE)
         {
