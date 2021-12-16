@@ -186,8 +186,6 @@ FS::ls()
 
     std::cout << "name\ttype\tsize" << std::endl;
 
-    std::string type = "dir";
-    std::string size = "-";
     unsigned int i = 1;
 
     if(current_blk == ROOT_BLOCK)
@@ -197,6 +195,9 @@ FS::ls()
 
     for(; i < file_pos; i++)
     {
+        std::string type = "dir";
+        std::string size = "-";
+        
         if(files[i].type == TYPE_FILE)
         {
             type = "file";
