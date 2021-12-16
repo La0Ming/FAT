@@ -189,6 +189,7 @@ FS::ls()
     std::string type = "dir";
     std::string size = "-";
     char rights[3] = {""};
+    rights[0] = '-';
     unsigned int i = 1;
 
     if(current_blk == ROOT_BLOCK)
