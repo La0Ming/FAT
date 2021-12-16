@@ -184,13 +184,12 @@ FS::ls()
 {
     std::cout << "FS::ls()\n";
 
-    std::cout << "name\ttype\taccessrights\tsize" << std::endl;
+    std::cout << "name\t\ttype\t\taccessrights\t\tsize" << std::endl;
 
     std::string type = "dir";
     std::string size = "-";
-    char rights[3] = {""};
-    rights[0] = '-';
     unsigned int i = 1;
+    char rights[3] = {'-', '-', '-'};
 
     if(current_blk == ROOT_BLOCK)
     {
@@ -223,7 +222,7 @@ FS::ls()
             rights[2] = 'x';
         }
 
-        std::cout << files[i].file_name << "\t" << type << "\t" << rights << "\t\t" << size << std::endl;
+        std::cout << files[i].file_name << "\t\t" << type << "\t\t" << rights << "\t\t\t" << size << std::endl;
     }
 
     return 0;
