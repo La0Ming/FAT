@@ -184,10 +184,11 @@ FS::ls()
 {
     std::cout << "FS::ls()\n";
 
-    std::cout << "name\ttype\tsize" << std::endl;
+    std::cout << "name\ttype\taccessrights\tsize" << std::endl;
 
     std::string type = "dir";
     std::string size = "-";
+    std::string rights = "---";
     unsigned int i = 1;
 
     if(current_blk == ROOT_BLOCK)
@@ -203,7 +204,36 @@ FS::ls()
             size = std::to_string(files[i].size);
         }
 
-        std::cout << files[i].file_name << "\t" << type << "\t" << size << std::endl;
+        if(files[i].access_rights == READ + WRITE + EXECUTE)
+        {
+            rights = "rwx";
+        }
+        else if(files[i].access_rights == READ + WRITE)
+        {
+            rights = "rw-";
+        }
+        else if(files[i].access_rights == READ + EXECUTE)
+        {
+            rights = "r-x";
+        }
+        else if(files[i].access_rights == READ)
+        {
+            rights = "r--";
+        }
+        else if(files[i].access_rights == WRITE + EXECUTE)
+        {
+            rights = "-wx";
+        }
+        else if(files[i].access_rights == WRITE)
+        {
+            rights = "-w-";
+        }
+        else if(files[i].access_rights == EXECUTE)
+        {
+            rights = "--x";
+        }
+
+        std::cout << files[i].file_name << "\t" << type << "\t" << rights << "\t\t" << size << std::endl;
     }
 
     return 0;
@@ -635,5 +665,14 @@ int
 FS::chmod(std::string accessrights, std::string filepath)
 {
     std::cout << "FS::chmod(" << accessrights << "," << filepath << ")\n";
+
+    int i = find_entry(filepath) + 1;
+
+    if(find_entry(filepath) + 1)
+    {
+        files[i].access_rights = (uint8_t)accessrights.c_str();
+        std::cout << files[i].access_rights << std::endl;
+    }
+
     return 0;
 }
