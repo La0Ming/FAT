@@ -103,7 +103,7 @@ FS::create(std::string filepath)
             file.size = data.size();
             std::strcpy(file.file_name, filepath.c_str());
             file.type = TYPE_FILE;
-            file.access_rights = (READ | WRITE);
+            file.access_rights = READ + WRITE;
             find_free(pos);
             file.first_blk = pos;
             disk.write(file.first_blk, (uint8_t*)data.substr(0, BLOCK_SIZE - 1).c_str());
@@ -148,26 +148,33 @@ int
 FS::cat(std::string filepath)
 {
     std::cout << "FS::cat(" << filepath << ")\n";
+    
     char buffer[BLOCK_SIZE] = {""};
     unsigned int i = find_entry(filepath);
 
     if(i + 1)
     {
-        if(files[i].type)
-        {
-            std::cout << "cat: " << files[i].file_name << ": Is a directory" << std::endl;
-        }
-        else
-        {
-            int16_t blk_no = files[i].first_blk;
-            while(fat[blk_no] != FAT_EOF)
+        bool tmp = (files[i].access_rights & READ);
+        if(tmp == true){
+            if(files[i].type)
             {
-                disk.read(blk_no, (uint8_t*)buffer);
-                std::cout << buffer;
-                blk_no = fat[blk_no];
+                std::cout << "cat: " << files[i].file_name << ": Is a directory" << std::endl;
             }
-            disk.read(blk_no, (uint8_t*)buffer);
-            std::cout << buffer << std::endl;
+            else
+            {
+                int16_t blk_no = files[i].first_blk;
+                while(fat[blk_no] != FAT_EOF)
+                {
+                    disk.read(blk_no, (uint8_t*)buffer);
+                    std::cout << buffer;
+                    blk_no = fat[blk_no];
+                }
+                disk.read(blk_no, (uint8_t*)buffer);
+                std::cout << buffer << std::endl;
+            }
+        }
+        else{
+            std::cout << "no access rights" << std::endl;
         }
     }
     else
@@ -184,7 +191,7 @@ FS::ls()
 {
     std::cout << "FS::ls()\n";
 
-    std::cout << "name\t\ttype\t\taccessrights\t\tsize" << std::endl;
+    std::cout << "name\ttype\taccessrights\tsize" << std::endl;
 
     std::string type = "dir";
     std::string size = "-";
@@ -222,7 +229,7 @@ FS::ls()
             rights[2] = 'x';
         }
 
-        std::cout << files[i].file_name << "\t\t" << type << "\t\t" << rights << "\t\t\t" << size << std::endl;
+        std::cout << files[i].file_name << "\t" << type << "\t" << rights << "\t\t" << size << std::endl;
     }
 
     return 0;
@@ -245,24 +252,83 @@ FS::cp(std::string sourcepath, std::string destpath)
     }
     else
     {
-        if(dest_pos + 1)
-        {
-            if(files[src_pos].type)
+        bool check1 = (files[src_pos].access_rights & READ);
+        if(check1 == true){
+            if(dest_pos + 1)
             {
-                std::cout << "cp: " << files[src_pos].file_name << ": Is a directory" << std::endl;
-            }
-            else if(files[dest_pos].type)
-            {
-                std::cout << "cp: " << files[dest_pos].file_name << ": Is a directory" << std::endl;
+                bool check2 = files[dest_pos].access_rights & WRITE;
+                if(check2 == true){
+                    if(files[src_pos].type)
+                    {
+                        std::cout << "cp: " << files[src_pos].file_name << ": Is a directory" << std::endl;
+                    }
+                    else if(files[dest_pos].type)
+                    {
+                        std::cout << "cp: " << files[dest_pos].file_name << ": Is a directory" << std::endl;
+                    }
+                    else
+                    {
+                        if(file_pos < MAX_NO_FILES && files[src_pos].size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
+                        {
+                            
+                            
+                            files[dest_pos].size = files[src_pos].size;
+                            char buffer[BLOCK_SIZE] = {""};
+                            int16_t src_blk_no = files[src_pos].first_blk;
+                            int16_t dest_blk_no = files[dest_pos].first_blk;
+
+                            while(fat[src_blk_no] != FAT_EOF)
+                            {
+                                disk.read(src_blk_no, (uint8_t*)buffer);
+                                disk.write(dest_blk_no, (uint8_t*)buffer);
+                                src_blk_no = fat[src_blk_no];
+
+                                if(fat[dest_blk_no] == FAT_EOF)
+                                {
+                                    int16_t prev_pos = dest_blk_no;
+                                    find_free(++dest_blk_no);
+                                    fat[prev_pos] = dest_blk_no;
+                                    fat[dest_blk_no] = FAT_EOF;
+                                }
+                                else
+                                {
+                                    dest_blk_no = fat[dest_blk_no];
+                                }
+                            }
+                            disk.read(src_blk_no, (uint8_t*)buffer);
+                            disk.write(dest_blk_no, (uint8_t*)buffer);
+
+                            disk.write(current_blk, (uint8_t*)files);
+                            disk.write(FAT_BLOCK, (uint8_t*)fat);
+                        }
+                        else
+                        {
+                            std::cout << "Disk has no more room for additional data" << std::endl;
+                        }
+                    }
+                }
+                else{
+                    std::cout << "no access rights" << std::endl;
+                }
             }
             else
             {
                 if(file_pos < MAX_NO_FILES && files[src_pos].size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
                 {
-                    files[dest_pos].size = files[src_pos].size;
+                    dir_entry file;
+                    std::strcpy(file.file_name, destpath.c_str());
+                    file.size = files[src_pos].size;
+                    file.type = TYPE_FILE;
+                    file.access_rights = READ + WRITE;
+                    int16_t pos = 2;
+                    find_free(pos);
+                    file.first_blk = pos;
+                    files[file_pos++] = file;
+                    fat[file.first_blk] = FAT_EOF;
+
                     char buffer[BLOCK_SIZE] = {""};
                     int16_t src_blk_no = files[src_pos].first_blk;
-                    int16_t dest_blk_no = files[dest_pos].first_blk;
+                    int16_t dest_blk_no = file.first_blk;
 
                     while(fat[src_blk_no] != FAT_EOF)
                     {
@@ -272,7 +338,8 @@ FS::cp(std::string sourcepath, std::string destpath)
 
                         if(fat[dest_blk_no] == FAT_EOF)
                         {
-                            int16_t prev_pos = dest_blk_no;
+                            std::cout << "EOF" << std::endl;
+                            int16_t prev_pos = pos;
                             find_free(++dest_blk_no);
                             fat[prev_pos] = dest_blk_no;
                             fat[dest_blk_no] = FAT_EOF;
@@ -285,8 +352,8 @@ FS::cp(std::string sourcepath, std::string destpath)
                     disk.read(src_blk_no, (uint8_t*)buffer);
                     disk.write(dest_blk_no, (uint8_t*)buffer);
 
-                    disk.write(current_blk, (uint8_t*)files);
-                    disk.write(FAT_BLOCK, (uint8_t*)fat);
+                    disk.write(0, (uint8_t*)files);
+                    disk.write(1, (uint8_t*)fat);
                 }
                 else
                 {
@@ -294,54 +361,8 @@ FS::cp(std::string sourcepath, std::string destpath)
                 }
             }
         }
-        else
-        {
-            if(file_pos < MAX_NO_FILES && files[src_pos].size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
-            {
-                dir_entry file;
-                std::strcpy(file.file_name, destpath.c_str());
-                file.size = files[src_pos].size;
-                file.type = TYPE_FILE;
-                file.access_rights = (READ | WRITE);
-                int16_t pos = 2;
-                find_free(pos);
-                file.first_blk = pos;
-                files[file_pos++] = file;
-                fat[file.first_blk] = FAT_EOF;
-
-                char buffer[BLOCK_SIZE] = {""};
-                int16_t src_blk_no = files[src_pos].first_blk;
-                int16_t dest_blk_no = file.first_blk;
-
-                while(fat[src_blk_no] != FAT_EOF)
-                {
-                    disk.read(src_blk_no, (uint8_t*)buffer);
-                    disk.write(dest_blk_no, (uint8_t*)buffer);
-                    src_blk_no = fat[src_blk_no];
-
-                    if(fat[dest_blk_no] == FAT_EOF)
-                    {
-                        std::cout << "EOF" << std::endl;
-                        int16_t prev_pos = pos;
-                        find_free(++dest_blk_no);
-                        fat[prev_pos] = dest_blk_no;
-                        fat[dest_blk_no] = FAT_EOF;
-                    }
-                    else
-                    {
-                        dest_blk_no = fat[dest_blk_no];
-                    }
-                }
-                disk.read(src_blk_no, (uint8_t*)buffer);
-                disk.write(dest_blk_no, (uint8_t*)buffer);
-
-                disk.write(0, (uint8_t*)files);
-                disk.write(1, (uint8_t*)fat);
-            }
-            else
-            {
-                std::cout << "Disk has no more room for additional data" << std::endl;
-            }
+        else{
+            std::cout << "no access rights" << std::endl;
         }
     }
 
@@ -364,21 +385,24 @@ FS::mv(std::string sourcepath, std::string destpath)
         {
             if(files[dest_pos].type == TYPE_DIR)
             {
-                // Add file to sub-directory
-                dir_entry file;
-                file = files[src_pos];
-                cd(files[dest_pos].file_name);
-                files[file_pos++] = file;
-                disk.write(current_blk, (uint8_t*)files);
+                bool check2 = files[dest_pos].access_rights & WRITE;
+                if(check2 == true){
+                    // Add file to sub-directory
+                    dir_entry file;
+                    file = files[src_pos];
+                    cd(files[dest_pos].file_name);
+                    files[file_pos++] = file;
+                    disk.write(current_blk, (uint8_t*)files);
 
-                // Remove file from current directory
-                cd("..");
-                for(; src_pos < file_pos; src_pos++)
-                {
-                    files[src_pos] = files[src_pos + 1];
+                    // Remove file from current directory
+                    cd("..");
+                    for(; src_pos < file_pos; src_pos++)
+                    {
+                        files[src_pos] = files[src_pos + 1];
+                    }
+                    file_pos--;
+                    disk.write(current_blk, (uint8_t*)files);
                 }
-                file_pos--;
-                disk.write(current_blk, (uint8_t*)files);
             }
             else
             {
@@ -500,36 +524,45 @@ FS::append(std::string filepath1, std::string filepath2)
         {
             if(file_pos < MAX_NO_FILES && files[src_pos].size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
             {
-                char buffer[BLOCK_SIZE] = {""};
-                int16_t dest_blk_no = files[dest_pos].first_blk;
+                bool check1 = files[src_pos].access_rights & READ;
+                bool check2 = files[dest_pos].access_rights & WRITE;
+                if(check1 == true && check2 == true){
+                    std::cout << "appending" << std::endl;
+                    char buffer[BLOCK_SIZE] = {""};
+                    int16_t dest_blk_no = files[dest_pos].first_blk;
 
-                while(fat[dest_blk_no] != FAT_EOF)
-                {
-                    dest_blk_no = fat[dest_blk_no];
-                }
+                    while(fat[dest_blk_no] != FAT_EOF)
+                    {
+                        dest_blk_no = fat[dest_blk_no];
+                    }
 
-                int16_t src_blk_no = files[src_pos].first_blk;
-                int16_t prev_pos = dest_blk_no;
-                find_free(++dest_blk_no);
-                fat[prev_pos] = dest_blk_no;
-
-                while(fat[src_blk_no] != FAT_EOF)
-                {
-                    disk.read(src_blk_no, (uint8_t*)buffer);
-                    disk.write(dest_blk_no, (uint8_t*)buffer);
-                    files[dest_pos].size += strlen(buffer);
-                    src_blk_no = fat[src_blk_no];
+                    int16_t src_blk_no = files[src_pos].first_blk;
                     int16_t prev_pos = dest_blk_no;
                     find_free(++dest_blk_no);
                     fat[prev_pos] = dest_blk_no;
-                }
 
-                disk.read(src_blk_no, (uint8_t*)buffer);
-                disk.write(dest_blk_no, (uint8_t*)buffer);
-                files[dest_pos].size += strlen(buffer);
-                fat[dest_blk_no] = FAT_EOF;
-                disk.write(0, (uint8_t*)files);
-                disk.write(1, (uint8_t*)fat);
+                    while(fat[src_blk_no] != FAT_EOF)
+                    {
+                        disk.read(src_blk_no, (uint8_t*)buffer);
+                        disk.write(dest_blk_no, (uint8_t*)buffer);
+                        files[dest_pos].size += strlen(buffer);
+                        src_blk_no = fat[src_blk_no];
+                        int16_t prev_pos = dest_blk_no;
+                        find_free(++dest_blk_no);
+                        fat[prev_pos] = dest_blk_no;
+                    }
+
+                    disk.read(src_blk_no, (uint8_t*)buffer);
+                    disk.write(dest_blk_no, (uint8_t*)buffer);
+                    files[dest_pos].size += strlen(buffer);
+                    fat[dest_blk_no] = FAT_EOF;
+                    disk.write(0, (uint8_t*)files);
+                    disk.write(1, (uint8_t*)fat);
+                }
+                else{
+                    std::cout << "cant append" << std::endl;
+                }
+                
             }
             else
             {
@@ -564,7 +597,7 @@ FS::mkdir(std::string dirpath)
         fat[pos] = FAT_EOF;
 
         sub_dir.type = TYPE_DIR;
-        sub_dir.access_rights = (READ | WRITE);
+        sub_dir.access_rights = (READ | WRITE | EXECUTE);
         files[file_pos++] = sub_dir;
 
         dir_entry sub_dir_files[MAX_NO_FILES];
@@ -575,7 +608,7 @@ FS::mkdir(std::string dirpath)
         strcpy(sub_dir_files[0].file_name, "..");
         sub_dir_files[0].first_blk = current_blk;
         sub_dir_files[0].type = TYPE_DIR;
-        sub_dir_files[0].access_rights = (READ | WRITE);
+        sub_dir_files[0].access_rights = (READ | WRITE | EXECUTE);
 
         disk.write(sub_dir.first_blk, (uint8_t*)sub_dir_files);
         disk.write(current_blk, (uint8_t*)files);
@@ -665,7 +698,7 @@ FS::chmod(std::string accessrights, std::string filepath)
     {
         uint8_t access_int = std::stoi(accessrights);
 
-        if(access_int >=0 && access_int <= (READ|WRITE|EXECUTE))
+        if(access_int >=0 && access_int <= 0xFF)
         {
             files[entry].access_rights = access_int;
             disk.write(current_blk, (uint8_t*)files);
