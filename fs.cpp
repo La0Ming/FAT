@@ -232,6 +232,10 @@ FS::ls()
         {
             rights = "--x";
         }
+        else if(files[i].access_rights == 0)
+        {
+            rights = "---";
+        }
 
         std::cout << files[i].file_name << "\t" << type << "\t" << rights << "\t\t" << size << std::endl;
     }
@@ -665,6 +669,26 @@ int
 FS::chmod(std::string accessrights, std::string filepath)
 {
     std::cout << "FS::chmod(" << accessrights << "," << filepath << ")\n";
+
+    int entry = find_entry(filepath);
+
+    if(entry == -1)
+    {
+        std::cout << "chmod: " << filepath << ": No such file or directory" << std::endl;
+    }
+    else
+    {
+        uint8_t access_int = std::stoi(accessrights);
+
+        if(access_int >=0 && access_int <= READ+WRITE+EXECUTE)
+        {
+            files[entry].access_rights = access_int;
+        }
+        else
+        {
+            std::cout << "chmod: invalid access right" << std::endl;
+        }
+    }
 
     return 0;
 }
