@@ -188,7 +188,7 @@ FS::ls()
 
     std::string type = "dir";
     std::string size = "-";
-    std::string rights = "-";
+    char rights[3] = {""};
     unsigned int i = 1;
 
     if(current_blk == ROOT_BLOCK)
@@ -207,37 +207,19 @@ FS::ls()
             size = std::to_string(files[i].size);
         }
 
-        if(files[i].access_rights == (READ | WRITE | EXECUTE))
+        if(files[i].access_rights & READ)
         {
-            rights = "rwx";
+            rights[0] = 'r';
+            rights[1] = '-';
         }
-        else if(files[i].access_rights == (READ | WRITE))
+        if(files[i].access_rights & WRITE)
         {
-            rights = "rw-";
+            rights[1] = 'w';
+            rights[2] = '-';
         }
-        else if(files[i].access_rights == (READ | EXECUTE))
+        if(files[i].access_rights & EXECUTE)
         {
-            rights = "r-x";
-        }
-        else if(files[i].access_rights == READ)
-        {
-            rights = "r--";
-        }
-        else if(files[i].access_rights == (WRITE | EXECUTE))
-        {
-            rights = "-wx";
-        }
-        else if(files[i].access_rights == WRITE)
-        {
-            rights = "-w-";
-        }
-        else if(files[i].access_rights == EXECUTE)
-        {
-            rights = "--x";
-        }
-        else if(files[i].access_rights == 0)
-        {
-            rights = "---";
+            rights[2] = 'x';
         }
 
         std::cout << files[i].file_name << "\t" << type << "\t" << rights << "\t\t" << size << std::endl;
