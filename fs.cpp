@@ -53,13 +53,14 @@ int FS::tmp_enter(std::string &path) // TODO: Handle if name contains '/'
     std::string delimitor = "/";
     uint16_t start_blk = current_blk;
     std::string start_cwd = cwd;
-    size_t pos = 0;
-    while((pos = path.find(delimitor)) != std::string::npos)
+    size_t end = 0;
+    while((end = path.find(delimitor)) != std::string::npos)
     {
-        std::string sub_dir = path.substr(0, pos);
-        if(find_entry(sub_dir) != -1)
+        std::string entry = path.substr(0, end);
+
+        if(find_entry(entry) != -1)
         {
-            cd(sub_dir);
+            cd(entry);
         }
         else
         {
@@ -70,7 +71,7 @@ int FS::tmp_enter(std::string &path) // TODO: Handle if name contains '/'
             return -1;
         }
         
-        path.erase(0, pos+delimitor.length());
+        path.erase(0, end + delimitor.length());
     }
 
     return 0;
@@ -116,17 +117,18 @@ FS::format() // TODO: FIX
 int
 FS::create(std::string filepath)
 {
+    std::string name = filepath;
     uint16_t start_blk = current_blk;
     std::string start_cwd = cwd;
-    if(tmp_enter(filepath) == -1)
+    if(tmp_enter(name) == -1)
     {
         std::cout << "create: cannot create file '" << filepath << "': No such file or directory" << std::endl;
     }
     else
     {
-        if(filepath.size() < 57)
+        if(name.size() < 57)
         {
-            if(find_entry(filepath) + 1)
+            if(find_entry(name) + 1)
             {
                 std::cout << "create: cannot create file '" << filepath << "': File exists" << std::endl;
             }
@@ -146,7 +148,7 @@ FS::create(std::string filepath)
                     }
                     
                     file.size = data.size();
-                    std::strcpy(file.file_name, filepath.c_str());
+                    std::strcpy(file.file_name, name.c_str());
                     file.type = TYPE_FILE;
                     file.access_rights = (READ | WRITE);
                     find_free(pos);
@@ -187,7 +189,7 @@ FS::create(std::string filepath)
         }
         else
         {
-            std::cout << "create: " << filepath << ": file name too big" << std::endl;
+            std::cout << "create: " << name << ": file name too big" << std::endl;
         }
         
         current_blk = start_blk;
@@ -251,7 +253,7 @@ FS::ls()
 {
     std::cout << "FS::ls()\n";
 
-    std::cout << "name\t\ttype\t\taccessrights\t\tsize" << std::endl;
+    std::cout << "name\t\t\t\ttype\t\t\t\taccessrights\t\t\t\tsize" << std::endl;
 
     std::string type = "dir";
     std::string size = "-";
@@ -287,7 +289,7 @@ FS::ls()
             rights[2] = 'x';
         }
 
-        std::cout << files[i].file_name << "\t\t" << type << "\t\t" << rights << "\t\t\t" << size << std::endl;
+        std::cout << files[i].file_name << "\t\t\t\t" << type << "\t\t\t\t" << rights << "\t\t\t\t\t" << size << std::endl;
     }
 
     return 0;
@@ -722,56 +724,65 @@ FS::append(std::string filepath1, std::string filepath2)
 int
 FS::mkdir(std::string dirpath)
 {
-    // int number_of_sub_dir = path_parser(dirpath);
-    // if(number_of_sub_dir != -1){
-    //     if(dirpath.size() < 57)
-    //     {
-    //         if(find_entry(dirpath) == -1)
-    //         {
-    //             dir_entry sub_dir;
-    //             int16_t pos = 2;
+    std::string name = dirpath;
+    uint16_t start_blk = current_blk;
+    std::string start_cwd = cwd;
 
-    //             // Add name
-    //             strcpy(sub_dir.file_name, dirpath.c_str());
+    if(tmp_enter(name) == -1)
+    {
+        std::cout << "mkdir: cannot create directory '" << dirpath << "': No such file or directory" << std::endl;
+    }
+    else
+    {
+        if(name.size() < 57)
+        {
+            if(find_entry(name) == -1)
+            {
+                dir_entry sub_dir;
+                int16_t pos = 2;
 
-    //             sub_dir.size = 0;
+                // Add name
+                strcpy(sub_dir.file_name, name.c_str());
 
-    //             // Find available first block
-    //             find_free(pos);
-    //             sub_dir.first_blk = pos;
-    //             fat[pos] = FAT_EOF;
+                sub_dir.size = 0;
 
-    //             sub_dir.type = TYPE_DIR;
-    //             sub_dir.access_rights = (READ | WRITE | EXECUTE);
-    //             files[file_pos++] = sub_dir;
+                // Find available first block
+                find_free(pos);
+                sub_dir.first_blk = pos;
+                fat[pos] = FAT_EOF;
 
-    //             dir_entry sub_dir_files[MAX_NO_FILES];
-    //             for(unsigned int i = 1; i < MAX_NO_FILES; i++)
-    //             {
-    //                 strcpy(sub_dir_files[i].file_name, "");
-    //             }
-    //             strcpy(sub_dir_files[0].file_name, "..");
-    //             sub_dir_files[0].first_blk = current_blk;
-    //             sub_dir_files[0].type = TYPE_DIR;
-    //             sub_dir_files[0].access_rights = (READ | WRITE | EXECUTE);
+                sub_dir.type = TYPE_DIR;
+                sub_dir.access_rights = (READ | WRITE | EXECUTE);
+                files[file_pos++] = sub_dir;
 
-    //             disk.write(sub_dir.first_blk, (uint8_t*)sub_dir_files);
-    //             disk.write(current_blk, (uint8_t*)files);
-    //         }
-    //         else
-    //         {
-    //             std::cout << "mkdir: cannot create directory '" << dirpath << "': File exists" << std::endl;
-    //         }
-    //     }
-    //     else
-    //     {
-    //         std::cout << "mkdir: " << dirpath << ": file name too big" << std::endl;
-    //     }
-    //     for(int z = number_of_sub_dir; z > 0; z--){
-    //         cd("..");
-    //     }
-    // }
-    // return 0;
+                dir_entry sub_dir_files[MAX_NO_FILES];
+                for(unsigned int i = 1; i < MAX_NO_FILES; i++)
+                {
+                    strcpy(sub_dir_files[i].file_name, "");
+                }
+                strcpy(sub_dir_files[0].file_name, "..");
+                sub_dir_files[0].first_blk = current_blk;
+                sub_dir_files[0].type = TYPE_DIR;
+                sub_dir_files[0].access_rights = (READ | WRITE | EXECUTE);
+
+                disk.write(sub_dir.first_blk, (uint8_t*)sub_dir_files);
+                disk.write(current_blk, (uint8_t*)files);
+            }
+            else
+            {
+                std::cout << "mkdir: cannot create directory '" << dirpath << "': File exists" << std::endl;
+            }
+        }
+        else
+        {
+            std::cout << "mkdir: " << name << ": file name too big" << std::endl;
+        }
+        
+        current_blk = start_blk;
+        cwd = start_cwd;
+        change_dir();
+    }
+    return 0;
 }
 
 // cd <dirpath> changes the current (working) directory to the directory named <dirpath>
