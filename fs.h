@@ -38,8 +38,10 @@ private:
     unsigned int file_pos;
     std::string cwd;
     uint16_t current_blk;
+
     void find_free(int16_t &first);
     int find_entry(const std::string path);
+    int find_file(std::string &path);
 
 public:
     FS();
