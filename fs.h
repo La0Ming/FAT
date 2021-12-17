@@ -39,9 +39,11 @@ private:
     std::string cwd;
     uint16_t current_blk;
 
+    // Functions
     void find_free(int16_t &first);
     int find_entry(const std::string path);
-    int find_file(std::string &path);
+    int path_parser(std::string &path);
+    void change_dir();
 
 public:
     FS();

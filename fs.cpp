@@ -2,19 +2,16 @@
 #include "fs.h"
 #include "cstring"
 
+// om vi kör cd .. i root ska vi inte få error
+// cp byter map t.ex cp ../file1 file2
+//något fel med namn i cp
+
 FS::FS()
 {
-    std::cout << "FS::FS()... Creating file system\n";
-
     // Root block
     cwd = "";
     current_blk = ROOT_BLOCK;
-    disk.read(current_blk, (uint8_t*)files);
-    file_pos = 0;
-    while(file_pos < MAX_NO_FILES && strcmp(files[file_pos].file_name, "") != 0)
-    {
-        file_pos++;
-    }
+    change_dir();
 
     // Fat Block
     disk.read(FAT_BLOCK, (uint8_t*)fat);
@@ -51,7 +48,7 @@ int FS::find_entry(const std::string path)
     return -1;
 }
 
-int FS::find_file(std::string &path) // TODO: Handle if name contains '/'
+int FS::path_parser(std::string &path) // TODO: Handle if name contains '/'
 {
     std::vector<std::string> sub_dirs = {}; //behöver göra något för dirpath, fast räkna med den sista
     std::string delimitor = "/";
@@ -61,11 +58,7 @@ int FS::find_file(std::string &path) // TODO: Handle if name contains '/'
         sub_dirs.push_back(path.substr(0, pos));
         path.erase(0, pos+delimitor.length());
     }
-    int blk = find_entry(path);
-    if(files[blk].type == TYPE_DIR)
-    {
-        sub_dirs.push_back(path);
-    }
+    //int blk = find_entry(path);
     //sub_dirs.push_back(path); // för att hantera dirpaths
     for(i = 0; i < sub_dirs.size(); i++){
         int check = cd(sub_dirs[i]);
@@ -79,12 +72,20 @@ int FS::find_file(std::string &path) // TODO: Handle if name contains '/'
     return i;
 }
 
+void FS::change_dir()
+{
+    disk.read(current_blk, (uint8_t*)files);
+    file_pos = 0;
+    while(file_pos < MAX_NO_FILES && strcmp(files[file_pos].file_name, "") != 0)
+    {
+        file_pos++;
+    }
+}
+
 // formats the disk, i.e., creates an empty file system
 int
 FS::format() // TODO: FIX
 {
-    std::cout << "FS::format()\n";
-
     // FAT block
     char empty[1] = "";
     fat[ROOT_BLOCK] = FAT_EOF;
@@ -103,7 +104,6 @@ FS::format() // TODO: FIX
         disk.write(i, (uint8_t*)empty);
         fat[i] = FAT_FREE;
     }
-
     return 0;
 }
 
@@ -112,65 +112,79 @@ FS::format() // TODO: FIX
 int
 FS::create(std::string filepath)
 {
-    std::cout << "FS::create(" << filepath << ")\n";
-    int number_of_sub_dir = find_file(filepath);
+    int number_of_sub_dir = path_parser(filepath);
     if(number_of_sub_dir != -1)
     {
-        if(find_entry(filepath) + 1)
+        if(filepath.size() < 57)
         {
-            std::cout << "create: cannot create file '" << filepath << "': File exists" << std::endl;
-        }
-        else
-        {
-            if(file_pos < MAX_NO_FILES)
+            if(find_entry(filepath) + 1)
             {
-                int16_t pos = 2;
-                std::string data = "";
-                // Create entry
-                dir_entry file;
-                std::getline(std::cin, data);
-                file.size = data.size();
-                std::strcpy(file.file_name, filepath.c_str());
-                file.type = TYPE_FILE;
-                file.access_rights = READ + WRITE;
-                find_free(pos);
-                file.first_blk = pos;
-                disk.write(file.first_blk, (uint8_t*)data.substr(0, BLOCK_SIZE - 1).c_str());
-                files[file_pos++] = file;
-                disk.write(current_blk, (uint8_t*)files);
-
-                if(file.size > BLOCK_SIZE && file.size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
-                {
-                    unsigned int res = file.size / BLOCK_SIZE - 1;
-
-                    if(file.size % BLOCK_SIZE != 0)
-                    {
-                        res++;            
-                    }
-
-                    unsigned int next = 1;
-
-                    for(res; res > 0; res--)
-                    {
-                        int16_t prev_pos  = pos;
-                        find_free(++pos);
-                        fat[prev_pos] = pos;
-                        disk.write(pos, (uint8_t*)data.substr(BLOCK_SIZE * next, BLOCK_SIZE * (next + 1) - 1).c_str());
-                        next++;
-                    }
-                }
-                fat[pos] = FAT_EOF;
-                disk.write(1, (uint8_t*)fat);
+                std::cout << "create: cannot create file '" << filepath << "': File exists" << std::endl;
             }
             else
             {
-                std::cout << "Disk has no more room for additional data" << std::endl;
-            }
+                if(file_pos < MAX_NO_FILES)
+                {
+                    int16_t pos = 2;
+                    std::string data = "";
+                    std::string cmp = " ";
+
+                    // Create entry
+                    dir_entry file;
+                    while(cmp != ""){
+                        std::getline(std::cin, cmp);
+                        data += cmp;
+                    }
+                    
+                    file.size = data.size();
+                    std::strcpy(file.file_name, filepath.c_str());
+                    file.type = TYPE_FILE;
+                    file.access_rights = (READ | WRITE);
+                    find_free(pos);
+                    file.first_blk = pos;
+                    disk.write(file.first_blk, (uint8_t*)data.substr(0, BLOCK_SIZE - 1).c_str());
+                    files[file_pos++] = file;
+                    disk.write(current_blk, (uint8_t*)files);
+
+                    if(file.size > BLOCK_SIZE && file.size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
+                    {
+                        unsigned int res = file.size / BLOCK_SIZE - 1;
+
+                        if(file.size % BLOCK_SIZE != 0)
+                        {
+                            res++;            
+                        }
+
+                        unsigned int next = 1;
+
+                        for(res; res > 0; res--)
+                        {
+                            int16_t prev_pos  = pos;
+                            find_free(++pos);
+                            fat[prev_pos] = pos;
+                            disk.write(pos, (uint8_t*)data.substr(BLOCK_SIZE * next, BLOCK_SIZE * (next + 1) - 1).c_str());
+                            next++;
+                        }
+                    }
+
+                    fat[pos] = FAT_EOF;
+                    disk.write(1, (uint8_t*)fat);
+                }
+                else
+                {
+                    std::cout << "create: Disk has no more room for additional data" << std::endl;
+                }
+            } 
+        }
+        else
+        {
+            std::cout << "create: " << filepath << ": file name too big" << std::endl;
         }
         for(int z = number_of_sub_dir; z > 0; z--){
             cd("..");
         }
     }
+
     return 0;
 }
 
@@ -178,16 +192,15 @@ FS::create(std::string filepath)
 int
 FS::cat(std::string filepath)
 {
-    std::cout << "FS::cat(" << filepath << ")\n";
-    int number_of_sub_dir = find_file(filepath);
+    int number_of_sub_dir = path_parser(filepath);
     if(number_of_sub_dir != -1){
         char buffer[BLOCK_SIZE] = {""};
         unsigned int i = find_entry(filepath);
 
         if(i + 1)
         {
-            bool tmp = (files[i].access_rights & READ);
-            if(tmp == true){
+            if((files[i].access_rights & READ))
+            {
                 if(files[i].type)
                 {
                     std::cout << "cat: " << files[i].file_name << ": Is a directory" << std::endl;
@@ -205,8 +218,9 @@ FS::cat(std::string filepath)
                     std::cout << buffer << std::endl;
                 }
             }
-            else{
-                std::cout << "no access rights" << std::endl;
+            else
+            {
+                std::cout << "cat: " << filepath << ": Permission denied" << std::endl;
             }
         }
         else
@@ -226,7 +240,7 @@ FS::ls()
 {
     std::cout << "FS::ls()\n";
 
-    std::cout << "name\ttype\taccessrights\tsize" << std::endl;
+    std::cout << "name\t\ttype\t\taccessrights\t\tsize" << std::endl;
 
     std::string type = "dir";
     std::string size = "-";
@@ -252,19 +266,17 @@ FS::ls()
         if(files[i].access_rights & READ)
         {
             rights[0] = 'r';
-            rights[1] = '-';
         }
         if(files[i].access_rights & WRITE)
         {
             rights[1] = 'w';
-            rights[2] = '-';
         }
         if(files[i].access_rights & EXECUTE)
         {
             rights[2] = 'x';
         }
 
-        std::cout << files[i].file_name << "\t" << type << "\t" << rights << "\t\t" << size << std::endl;
+        std::cout << files[i].file_name << "\t\t" << type << "\t\t" << rights << "\t\t\t" << size << std::endl;
     }
 
     return 0;
@@ -273,30 +285,50 @@ FS::ls()
 // cp <sourcepath> <destpath> makes an exact copy of the file
 // <sourcepath> to a new file <destpath>
 int
-FS::cp(std::string sourcepath, std::string destpath) //vet inte hur vi kan ta hand om 2 paths
+FS::cp(std::string sourcepath, std::string destpath)
 {
-    std::cout << "FS::cp(" << sourcepath << "," << destpath << ")\n";
+    int src_pos;
+    int dest_pos;
+    dir_entry sourcefile;
+    int number_of_sub_dir = path_parser(sourcepath);
 
-    int src_pos = find_entry(sourcepath);
-    int dest_pos = find_entry(destpath);
+    if(number_of_sub_dir != -1){
+        src_pos = find_entry(sourcepath);
+        sourcefile = files[src_pos];
+        for(int z = number_of_sub_dir; z > 0; z--){
+            cd("..");
+        }
+    }
+    else{
+        return -1;
+    } //////// FIXA OM FILEPATH INTE FINNS
+
+    number_of_sub_dir = path_parser(destpath);
+    if(number_of_sub_dir != -1){
+        dest_pos = find_entry(destpath);
+    }
+    else{
+        return -1;
+    } //////// FIXA OM FILEPATH INTE FINNS
 
     if(src_pos == -1)
     {
         std::cout << "cp: cannot find '" << sourcepath << "': No such file or directory" << std::endl;
+        for(int z = number_of_sub_dir; z > 0; z--){
+            cd("..");
+        }
     }
     else
     {
-        bool check1 = (files[src_pos].access_rights & READ);
-        if(check1 == true)
+        if(sourcefile.access_rights & READ)
         {
             if(dest_pos + 1)
             {
-                bool check2 = files[dest_pos].access_rights & WRITE;
-                if(check2 == true)
+                if(files[dest_pos].access_rights & WRITE)
                 {
-                    if(files[src_pos].type)
+                    if(sourcefile.type)
                     {
-                        std::cout << "cp: " << files[src_pos].file_name << ": Is a directory" << std::endl;
+                        std::cout << "cp: " << sourcefile.file_name << ": Is a directory" << std::endl;
                     }
                     else if(files[dest_pos].type)
                     {
@@ -304,13 +336,11 @@ FS::cp(std::string sourcepath, std::string destpath) //vet inte hur vi kan ta ha
                     }
                     else
                     {
-                        if(file_pos < MAX_NO_FILES && files[src_pos].size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
+                        if(file_pos < MAX_NO_FILES && sourcefile.size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
                         {
-                            
-                            
-                            files[dest_pos].size = files[src_pos].size;
+                            files[dest_pos].size = sourcefile.size;
                             char buffer[BLOCK_SIZE] = {""};
-                            int16_t src_blk_no = files[src_pos].first_blk;
+                            int16_t src_blk_no = sourcefile.first_blk;
                             int16_t dest_blk_no = files[dest_pos].first_blk;
 
                             while(fat[src_blk_no] != FAT_EOF)
@@ -336,27 +366,30 @@ FS::cp(std::string sourcepath, std::string destpath) //vet inte hur vi kan ta ha
 
                             disk.write(current_blk, (uint8_t*)files);
                             disk.write(FAT_BLOCK, (uint8_t*)fat);
+                            for(int z = number_of_sub_dir; z > 0; z--){
+                                cd("..");
+                            }
                         }
                         else
                         {
-                            std::cout << "Disk has no more room for additional data" << std::endl;
+                            std::cout << "cp: Disk has no more room for additional data" << std::endl;
                         }
                     }
                 }
                 else
                 {
-                    std::cout << "no access rights" << std::endl;
+                    std::cout << "cp: cannot open '" << destpath << "' for writing: Permission denied" << std::endl;
                 }
             }
             else
             {
-                if(file_pos < MAX_NO_FILES && files[src_pos].size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
+                if(file_pos < MAX_NO_FILES && sourcefile.size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
                 {
                     dir_entry file;
                     std::strcpy(file.file_name, destpath.c_str());
-                    file.size = files[src_pos].size;
+                    file.size = sourcefile.size;
                     file.type = TYPE_FILE;
-                    file.access_rights = READ + WRITE;
+                    file.access_rights = (READ | WRITE);
                     int16_t pos = 2;
                     find_free(pos);
                     file.first_blk = pos;
@@ -364,7 +397,7 @@ FS::cp(std::string sourcepath, std::string destpath) //vet inte hur vi kan ta ha
                     fat[file.first_blk] = FAT_EOF;
 
                     char buffer[BLOCK_SIZE] = {""};
-                    int16_t src_blk_no = files[src_pos].first_blk;
+                    int16_t src_blk_no = sourcefile.first_blk;
                     int16_t dest_blk_no = file.first_blk;
 
                     while(fat[src_blk_no] != FAT_EOF)
@@ -389,17 +422,23 @@ FS::cp(std::string sourcepath, std::string destpath) //vet inte hur vi kan ta ha
                     disk.read(src_blk_no, (uint8_t*)buffer);
                     disk.write(dest_blk_no, (uint8_t*)buffer);
 
-                    disk.write(0, (uint8_t*)files);
+                    files[file_pos++] = file;
+                    disk.write(current_blk, (uint8_t*)files);
                     disk.write(1, (uint8_t*)fat);
+
+                    for(int z = number_of_sub_dir; z > 0; z--){
+                        cd("..");
+                    }   
                 }
                 else
                 {
-                    std::cout << "Disk has no more room for additional data" << std::endl;
+                    std::cout << "cp: Disk has no more room for additional data" << std::endl;
                 }
             }
         }
-        else{
-            std::cout << "no access rights" << std::endl;
+        else
+        {
+            std::cout << "cp: cannot open '" << sourcepath << "' for reading: Permission denied" << std::endl;
         }
     }
 
@@ -411,10 +450,30 @@ FS::cp(std::string sourcepath, std::string destpath) //vet inte hur vi kan ta ha
 int
 FS::mv(std::string sourcepath, std::string destpath)
 {
-    std::cout << "FS::mv(" << sourcepath << "," << destpath << ")\n";
+    int src_pos;
+    int dest_pos;
+    std::string rm_path = sourcepath;
+    dir_entry file;
+    int number_of_sub_dir = path_parser(sourcepath);
+    
+    if(number_of_sub_dir != -1){
+        src_pos = find_entry(sourcepath);
+        file = files[src_pos];
+        for(int z = number_of_sub_dir; z > 0; z--){
+            cd("..");
+        }
+    }
+    else{
+        return -1;
+    } //////// FIXA OM FILEPATH INTE FINNS
 
-    int src_pos = find_entry(sourcepath);
-    int dest_pos = find_entry(destpath);
+    number_of_sub_dir = path_parser(destpath);
+    if(number_of_sub_dir != -1){
+        dest_pos = find_entry(destpath);
+    }
+    else{
+        return -1;
+    } //////// FIXA OM FILEPATH INTE FINNS
 
     if(src_pos + 1)
     {
@@ -422,22 +481,10 @@ FS::mv(std::string sourcepath, std::string destpath)
         {
             if(files[dest_pos].type == TYPE_DIR)
             {
-                bool check2 = files[dest_pos].access_rights & WRITE;
-                if(check2 == true){
+                if(files[dest_pos].access_rights & WRITE)
+                {
                     // Add file to sub-directory
-                    dir_entry file;
-                    file = files[src_pos];
-                    cd(files[dest_pos].file_name);
                     files[file_pos++] = file;
-                    disk.write(current_blk, (uint8_t*)files);
-
-                    // Remove file from current directory
-                    cd("..");
-                    for(; src_pos < file_pos; src_pos++)
-                    {
-                        files[src_pos] = files[src_pos + 1];
-                    }
-                    file_pos--;
                     disk.write(current_blk, (uint8_t*)files);
                 }
             }
@@ -445,11 +492,18 @@ FS::mv(std::string sourcepath, std::string destpath)
             {
                 std::cout << "mv: target '" << destpath << "' is not a directory" << std::endl;
             }
+            for(int z = number_of_sub_dir; z > 0; z--){
+                cd("..");
+            }
+            rm(rm_path);// Remove file from source directory
         }
         else
         {
-            strcpy(files[src_pos].file_name, destpath.c_str());
-            disk.write(0, (uint8_t*)files);
+            for(int z = number_of_sub_dir; z > 0; z--){
+                cd("..");
+            }
+            strcpy(file.file_name, destpath.c_str());
+            disk.write(current_blk, (uint8_t*)files);
         }
     }
     else
@@ -464,10 +518,8 @@ FS::mv(std::string sourcepath, std::string destpath)
 int
 FS::rm(std::string filepath)
 {
-    std::cout << "FS::rm(" << filepath << ")\n";
-    int number_of_sub_dir = find_file(filepath);
-    if(number_of_sub_dir != -1)
-    {
+    int number_of_sub_dir = path_parser(filepath);
+    if(number_of_sub_dir != -1){
         int pos = find_entry(filepath);
         char buffer[1] = "";
 
@@ -514,7 +566,7 @@ FS::rm(std::string filepath)
                 disk.write(blk_no, (uint8_t*)buffer);
                 fat[blk_no] = FAT_FREE;
 
-                disk.write(0, (uint8_t*)files);
+                disk.write(current_blk, (uint8_t*)files);
                 disk.write(1, (uint8_t*)fat);
             }
         }
@@ -526,7 +578,6 @@ FS::rm(std::string filepath)
             cd("..");
         }
     }
-
     return 0;
 }
 
@@ -535,84 +586,123 @@ FS::rm(std::string filepath)
 int
 FS::append(std::string filepath1, std::string filepath2)
 {
-    std::cout << "FS::append(" << filepath1 << "," << filepath2 << ")\n";
+    int src_pos;
+    int dest_pos;
+    std::string rm_path = filepath1;
+    dir_entry file;
+    int number_of_sub_dir = path_parser(filepath1);
+    
+    if(number_of_sub_dir != -1){
+        src_pos = find_entry(filepath1);
+        file = files[src_pos];
+        for(int z = number_of_sub_dir; z > 0; z--){
+            cd("..");
+        }
+    }
+    else{
+        return -1;
+    } //////// FIXA OM FILEPATH INTE FINNS
 
-    int src_pos = find_entry(filepath1);
-    int dest_pos = find_entry(filepath2);
+    number_of_sub_dir = path_parser(filepath2);
+    if(number_of_sub_dir != -1){
+        dest_pos = find_entry(filepath2);
+    }
+    else{
+        return -1;
+    } //////// FIXA OM FILEPATH INTE FINNS
 
     if(src_pos == -1)
     {
         std::cout << "append: cannot find '" << filepath1 << "': No such file or directory" << std::endl;
+        for(int z = number_of_sub_dir; z > 0; z--){
+            cd("..");
+        }
     }
     else if(dest_pos == -1)
     {
         std::cout << "append: cannot find '" << filepath2 << "': No such file or directory" << std::endl;
+        for(int z = number_of_sub_dir; z > 0; z--){
+            cd("..");
+        }
     }
     else if(filepath1 == filepath2)
     {
         std::cout << "\"You do not need to cover the special case when appending a file to itself, i.e., ’append <filename1> <filename1>’.\"" << std::endl << std::endl << "- Håkan Grahn" << std::endl;
+        for(int z = number_of_sub_dir; z > 0; z--){
+            cd("..");
+        }
     }
     else
     {
-        if(files[src_pos].type == TYPE_DIR)
+        if(file.type == TYPE_DIR)
         {
             std::cout << "append: " << filepath1 << ": Is a directory" << std::endl;
         }
-        else if(files[dest_pos].type == TYPE_DIR)
-        {
-            std::cout << "append: " << filepath2 << ": Is a directory" << std::endl;
-        }
         else
         {
-            if(file_pos < MAX_NO_FILES && files[src_pos].size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
+            if(files[dest_pos].type == TYPE_DIR)
             {
-                bool check1 = files[src_pos].access_rights & READ;
-                bool check2 = files[dest_pos].access_rights & WRITE;
-                if(check1 == true && check2 == true){
-                    std::cout << "appending" << std::endl;
-                    char buffer[BLOCK_SIZE] = {""};
-                    int16_t dest_blk_no = files[dest_pos].first_blk;
-
-                    while(fat[dest_blk_no] != FAT_EOF)
-                    {
-                        dest_blk_no = fat[dest_blk_no];
-                    }
-
-                    int16_t src_blk_no = files[src_pos].first_blk;
-                    int16_t prev_pos = dest_blk_no;
-                    find_free(++dest_blk_no);
-                    fat[prev_pos] = dest_blk_no;
-
-                    while(fat[src_blk_no] != FAT_EOF)
-                    {
-                        disk.read(src_blk_no, (uint8_t*)buffer);
-                        disk.write(dest_blk_no, (uint8_t*)buffer);
-                        files[dest_pos].size += strlen(buffer);
-                        src_blk_no = fat[src_blk_no];
-                        int16_t prev_pos = dest_blk_no;
-                        find_free(++dest_blk_no);
-                        fat[prev_pos] = dest_blk_no;
-                    }
-
-                    disk.read(src_blk_no, (uint8_t*)buffer);
-                    disk.write(dest_blk_no, (uint8_t*)buffer);
-                    files[dest_pos].size += strlen(buffer);
-                    fat[dest_blk_no] = FAT_EOF;
-                    disk.write(0, (uint8_t*)files);
-                    disk.write(1, (uint8_t*)fat);
-                }
-                else{
-                    std::cout << "cant append" << std::endl;
-                }
-                
+                std::cout << "append: " << filepath2 << ": Is a directory" << std::endl;
             }
             else
             {
-                std::cout << "Disk has no more room for additional data" << std::endl;
+                if(file.access_rights & READ)
+                {
+                    if(files[dest_pos].access_rights & WRITE)
+                    {
+                        if(file_pos < MAX_NO_FILES && file.size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
+                        {
+                            char buffer[BLOCK_SIZE] = {""};
+                            int16_t dest_blk_no = files[dest_pos].first_blk;
+
+                            while(fat[dest_blk_no] != FAT_EOF)
+                            {
+                                dest_blk_no = fat[dest_blk_no];
+                            }
+
+                            int16_t src_blk_no = file.first_blk;
+                            int16_t prev_pos = dest_blk_no;
+                            find_free(++dest_blk_no);
+                            fat[prev_pos] = dest_blk_no;
+
+                            while(fat[src_blk_no] != FAT_EOF)
+                            {
+                                disk.read(src_blk_no, (uint8_t*)buffer);
+                                disk.write(dest_blk_no, (uint8_t*)buffer);
+                                files[dest_pos].size += strlen(buffer);
+                                src_blk_no = fat[src_blk_no];
+                                int16_t prev_pos = dest_blk_no;
+                                find_free(++dest_blk_no);
+                                fat[prev_pos] = dest_blk_no;
+                            }
+
+                            disk.read(src_blk_no, (uint8_t*)buffer);
+                            disk.write(dest_blk_no, (uint8_t*)buffer);
+                            files[dest_pos].size += strlen(buffer);
+                            fat[dest_blk_no] = FAT_EOF;
+                            disk.write(current_blk, (uint8_t*)files);
+                            disk.write(1, (uint8_t*)fat);
+                        }
+                        else
+                        {
+                            std::cout << "append: Disk has no more room for additional data" << std::endl;
+                        }
+                    }
+                    else
+                    {
+                        std::cout << "append: cannot open '" << filepath2 << "' for writing: Permission denied" << std::endl;
+                    }
+                }
+                else
+                {
+                    std::cout << "append: cannot open '" << filepath1 << "' for reading: Permission denied" << std::endl;
+                }
             }
         }
     }
-    
+    for(int z = number_of_sub_dir; z > 0; z--){
+        cd("..");
+    }
     return 0;
 }
 
@@ -621,45 +711,50 @@ FS::append(std::string filepath1, std::string filepath2)
 int
 FS::mkdir(std::string dirpath)
 {
-    std::cout << "FS::mkdir(" << dirpath << ")\n";
-    int number_of_sub_dir = find_file(dirpath);
-    if(number_of_sub_dir != -1)
-    {
-        if(find_entry(dirpath) == -1)
+    int number_of_sub_dir = path_parser(dirpath);
+    if(number_of_sub_dir != -1){
+        if(dirpath.size() < 57)
         {
-            dir_entry sub_dir;
-            int16_t pos = 2;
-
-            // Add name
-            strcpy(sub_dir.file_name, dirpath.c_str());
-
-            sub_dir.size = 0;
-
-            // Find available first block
-            find_free(pos);
-            sub_dir.first_blk = pos;
-            fat[pos] = FAT_EOF;
-
-            sub_dir.type = TYPE_DIR;
-            sub_dir.access_rights = (READ | WRITE | EXECUTE);
-            files[file_pos++] = sub_dir;
-
-            dir_entry sub_dir_files[MAX_NO_FILES];
-            for(unsigned int i = 1; i < MAX_NO_FILES; i++)
+            if(find_entry(dirpath) == -1)
             {
-                strcpy(sub_dir_files[i].file_name, "");
-            }
-            strcpy(sub_dir_files[0].file_name, "..");
-            sub_dir_files[0].first_blk = current_blk;
-            sub_dir_files[0].type = TYPE_DIR;
-            sub_dir_files[0].access_rights = (READ | WRITE | EXECUTE);
+                dir_entry sub_dir;
+                int16_t pos = 2;
 
-            disk.write(sub_dir.first_blk, (uint8_t*)sub_dir_files);
-            disk.write(current_blk, (uint8_t*)files);
+                // Add name
+                strcpy(sub_dir.file_name, dirpath.c_str());
+
+                sub_dir.size = 0;
+
+                // Find available first block
+                find_free(pos);
+                sub_dir.first_blk = pos;
+                fat[pos] = FAT_EOF;
+
+                sub_dir.type = TYPE_DIR;
+                sub_dir.access_rights = (READ | WRITE | EXECUTE);
+                files[file_pos++] = sub_dir;
+
+                dir_entry sub_dir_files[MAX_NO_FILES];
+                for(unsigned int i = 1; i < MAX_NO_FILES; i++)
+                {
+                    strcpy(sub_dir_files[i].file_name, "");
+                }
+                strcpy(sub_dir_files[0].file_name, "..");
+                sub_dir_files[0].first_blk = current_blk;
+                sub_dir_files[0].type = TYPE_DIR;
+                sub_dir_files[0].access_rights = (READ | WRITE | EXECUTE);
+
+                disk.write(sub_dir.first_blk, (uint8_t*)sub_dir_files);
+                disk.write(current_blk, (uint8_t*)files);
+            }
+            else
+            {
+                std::cout << "mkdir: cannot create directory '" << dirpath << "': File exists" << std::endl;
+            }
         }
         else
         {
-            std::cout << "mkdir: cannot create directory '" << dirpath << "': File exists" << std::endl;
+            std::cout << "mkdir: " << dirpath << ": file name too big" << std::endl;
         }
         for(int z = number_of_sub_dir; z > 0; z--){
             cd("..");
@@ -670,12 +765,10 @@ FS::mkdir(std::string dirpath)
 
 // cd <dirpath> changes the current (working) directory to the directory named <dirpath>
 int
-FS::cd(std::string dirpath) // ska inte hoppa tillbaka, pga det ska vara kvar på dirpath 
+FS::cd(std::string dirpath)
 {
-    std::cout << "FS::cd(" << dirpath << ")\n";
-    int number_of_sub_dir = find_file(dirpath);
-    if(number_of_sub_dir != -1)
-    {
+    int number_of_sub_dir = path_parser(dirpath);
+    if(number_of_sub_dir != -1){
         int pos = find_entry(dirpath);
 
         if(pos + 1)
@@ -691,17 +784,12 @@ FS::cd(std::string dirpath) // ska inte hoppa tillbaka, pga det ska vara kvar p�
                     cwd += "/" + dirpath;
                 }
                 current_blk = files[pos].first_blk;
-                disk.read(current_blk, (uint8_t*)files);
-                file_pos = 0;
-                while(file_pos < MAX_NO_FILES && strcmp(files[file_pos].file_name, "") != 0)
-                {
-                    file_pos++;
-                }
+                change_dir();
             }
             else
             {
                 std::cout << "cd: " << dirpath << ": Not a directory" << std::endl;
-                return 1;
+                return -1;
             }
         }
         else
@@ -718,8 +806,6 @@ FS::cd(std::string dirpath) // ska inte hoppa tillbaka, pga det ska vara kvar p�
 int
 FS::pwd()
 {
-    std::cout << "FS::pwd()\n";
-
     if(cwd == "")
     {
         std::cout << "/" << std::endl;
@@ -737,11 +823,8 @@ FS::pwd()
 int
 FS::chmod(std::string accessrights, std::string filepath)
 {
-    std::cout << "FS::chmod(" << accessrights << "," << filepath << ")\n";
-
-    int number_of_sub_dir = find_file(filepath);
-    if(number_of_sub_dir != -1)
-    {
+    int number_of_sub_dir = path_parser(filepath);
+    if(number_of_sub_dir != -1){
         int entry = find_entry(filepath);
 
         if(entry == -1)
@@ -752,7 +835,7 @@ FS::chmod(std::string accessrights, std::string filepath)
         {
             uint8_t access_int = std::stoi(accessrights);
 
-            if(access_int >=0 && access_int <= 0xFF)
+            if(access_int >=0 && access_int <= (READ|WRITE|EXECUTE))
             {
                 files[entry].access_rights = access_int;
                 disk.write(current_blk, (uint8_t*)files);
