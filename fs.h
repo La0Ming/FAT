@@ -40,7 +40,6 @@ private:
     // Functions
     void find_free(int16_t &first);
     int find_entry(const std::string path);
-    int tmp_enter(std::string &path);
     void change_dir();
 
 public:
