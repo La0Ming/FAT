@@ -6,13 +6,7 @@ FS::FS()
 {
     // Root block
     cwd = "";
-    current_blk = ROOT_BLOCK;
-    disk.read(current_blk, (uint8_t*)files);
-    file_pos = 0;
-    while(file_pos < MAX_NO_FILES && strcmp(files[file_pos].file_name, "") != 0)
-    {
-        file_pos++;
-    }
+    change_dir(ROOT_BLOCK);
 
     // Fat Block
     disk.read(FAT_BLOCK, (uint8_t*)fat);
@@ -48,6 +42,7 @@ int FS::find_entry(const std::string path)
     
     return -1;
 }
+
 int FS::find_file(std::string &path) // TODO: Handle if name contains '/'
 {
     std::vector<std::string> sub_dirs = {}; //behöver göra något för dirpath, fast räkna med den sista
@@ -70,6 +65,17 @@ int FS::find_file(std::string &path) // TODO: Handle if name contains '/'
         }
     }
     return i;
+}
+
+void FS::change_dir(uint16_t blk)
+{
+    current_blk = blk;
+    disk.read(current_blk, (uint8_t*)files);
+    file_pos = 0;
+    while(file_pos < MAX_NO_FILES && strcmp(files[file_pos].file_name, "") != 0)
+    {
+        file_pos++;
+    }
 }
 
 // formats the disk, i.e., creates an empty file system
@@ -712,13 +718,7 @@ FS::cd(std::string dirpath)
                 {
                     cwd += "/" + dirpath;
                 }
-                current_blk = files[pos].first_blk;
-                disk.read(current_blk, (uint8_t*)files);
-                file_pos = 0;
-                while(file_pos < MAX_NO_FILES && strcmp(files[file_pos].file_name, "") != 0)
-                {
-                    file_pos++;
-                }
+                change_dir(files[pos].first_blk);
             }
             else
             {
