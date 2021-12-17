@@ -6,7 +6,8 @@ FS::FS()
 {
     // Root block
     cwd = "";
-    change_dir(ROOT_BLOCK);
+    current_blk = ROOT_BLOCK;
+    change_dir();
 
     // Fat Block
     disk.read(FAT_BLOCK, (uint8_t*)fat);
@@ -67,9 +68,8 @@ int FS::find_file(std::string &path) // TODO: Handle if name contains '/'
     return i;
 }
 
-void FS::change_dir(uint16_t blk)
+void FS::change_dir()
 {
-    current_blk = blk;
     disk.read(current_blk, (uint8_t*)files);
     file_pos = 0;
     while(file_pos < MAX_NO_FILES && strcmp(files[file_pos].file_name, "") != 0)
@@ -718,7 +718,8 @@ FS::cd(std::string dirpath)
                 {
                     cwd += "/" + dirpath;
                 }
-                change_dir(files[pos].first_blk);
+                current_blk = files[pos].first_blk;
+                change_dir();
             }
             else
             {
