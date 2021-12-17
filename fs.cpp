@@ -57,10 +57,22 @@ int FS::tmp_enter(std::string &path) // TODO: Handle if name contains '/'
     while((end = path.find(delimitor)) != std::string::npos)
     {
         std::string entry = path.substr(0, end);
+        int found = find_entry(entry);
 
-        if(find_entry(entry) != -1)
+        if(found != -1)
         {
-            cd(entry);
+            if(files[found].type == TYPE_DIR)
+            {
+                cd(entry);
+            }
+            else
+            {
+                current_blk = start_blk;
+                cwd = start_cwd;
+                change_dir();
+
+                return 1;
+            }
         }
         else
         {
@@ -123,6 +135,10 @@ FS::create(std::string filepath)
     if(tmp_enter(name) == -1)
     {
         std::cout << "create: cannot create file '" << filepath << "': No such file or directory" << std::endl;
+    }
+    else if(tmp_enter(name) == 1)
+    {
+        std::cout << "create: cannot create file '" << filepath << "': Not a directory" << std::endl;
     }
     else
     {
@@ -205,45 +221,57 @@ FS::create(std::string filepath)
 int
 FS::cat(std::string filepath)
 {
-    // if(number_of_sub_dir != -1)
-    // {
-    //     char buffer[BLOCK_SIZE] = {""};
-    //     unsigned int i = find_entry(filepath);
+    std::string name = filepath;
+    uint16_t start_blk = current_blk;
+    std::string start_cwd = cwd;
+    if(tmp_enter(name) == -1)
+    {
+        std::cout << "cat: " << filepath << ": No such file or directory" << std::endl;
+    }
+    else if(tmp_enter(name) == 1)
+    {
+        std::cout << "cat: " << filepath << ": Not a directory" << std::endl;
+    }
+    else
+    {
+        char buffer[BLOCK_SIZE] = {""};
+        unsigned int i = find_entry(filepath);
 
-    //     if(i + 1)
-    //     {
-    //         if((files[i].access_rights & READ))
-    //         {
-    //             if(files[i].type)
-    //             {
-    //                 std::cout << "cat: " << files[i].file_name << ": Is a directory" << std::endl;
-    //             }
-    //             else
-    //             {
-    //                 int16_t blk_no = files[i].first_blk;
-    //                 while(fat[blk_no] != FAT_EOF)
-    //                 {
-    //                     disk.read(blk_no, (uint8_t*)buffer);
-    //                     std::cout << buffer;
-    //                     blk_no = fat[blk_no];
-    //                 }
-    //                 disk.read(blk_no, (uint8_t*)buffer);
-    //                 std::cout << buffer << std::endl;
-    //             }
-    //         }
-    //         else
-    //         {
-    //             std::cout << "cat: " << filepath << ": Permission denied" << std::endl;
-    //         }
-    //     }
-    //     else
-    //     {
-    //         std::cout << "cat: " << filepath << ": No such file or directory" << std::endl;
-    //     }
-    //     for(int z = number_of_sub_dir; z > 0; z--){
-    //         cd("..");
-    //     }
-    // }
+        if(i + 1)
+        {
+            if((files[i].access_rights & READ))
+            {
+                if(files[i].type)
+                {
+                    std::cout << "cat: " << files[i].file_name << ": Is a directory" << std::endl;
+                }
+                else
+                {
+                    int16_t blk_no = files[i].first_blk;
+                    while(fat[blk_no] != FAT_EOF)
+                    {
+                        disk.read(blk_no, (uint8_t*)buffer);
+                        std::cout << buffer;
+                        blk_no = fat[blk_no];
+                    }
+                    disk.read(blk_no, (uint8_t*)buffer);
+                    std::cout << buffer << std::endl;
+                }
+            }
+            else
+            {
+                std::cout << "cat: " << filepath << ": Permission denied" << std::endl;
+            }
+        }
+        else
+        {
+            std::cout << "cat: " << filepath << ": No such file or directory" << std::endl;
+        }
+        
+        current_blk = start_blk;
+        cwd = start_cwd;
+        change_dir();
+    }
     return 0;
 }
 
@@ -732,6 +760,10 @@ FS::mkdir(std::string dirpath)
     {
         std::cout << "mkdir: cannot create directory '" << dirpath << "': No such file or directory" << std::endl;
     }
+    else if(tmp_enter(name) == 1)
+    {
+        std::cout << "mkdir: cannot create directory '" << dirpath << "': Not a directory" << std::endl;
+    }
     else
     {
         if(name.size() < 57)
@@ -752,7 +784,7 @@ FS::mkdir(std::string dirpath)
                 fat[pos] = FAT_EOF;
 
                 sub_dir.type = TYPE_DIR;
-                sub_dir.access_rights = (READ | WRITE | EXECUTE);
+                sub_dir.access_rights = (READ | WRITE);
                 files[file_pos++] = sub_dir;
 
                 dir_entry sub_dir_files[MAX_NO_FILES];
@@ -763,7 +795,7 @@ FS::mkdir(std::string dirpath)
                 strcpy(sub_dir_files[0].file_name, "..");
                 sub_dir_files[0].first_blk = current_blk;
                 sub_dir_files[0].type = TYPE_DIR;
-                sub_dir_files[0].access_rights = (READ | WRITE | EXECUTE);
+                sub_dir_files[0].access_rights = (READ | WRITE);
 
                 disk.write(sub_dir.first_blk, (uint8_t*)sub_dir_files);
                 disk.write(current_blk, (uint8_t*)files);
@@ -789,38 +821,52 @@ FS::mkdir(std::string dirpath)
 int
 FS::cd(std::string dirpath)
 {
-    // int number_of_sub_dir = path_parser(dirpath);
-    // if(number_of_sub_dir != -1){
-    //     int pos = find_entry(dirpath);
+    uint16_t start_blk = current_blk;
+    std::string start_cwd = cwd;
 
-    //     if(pos + 1)
-    //     {
-    //         if(files[pos].type == TYPE_DIR)
-    //         {
-    //             if(dirpath == "..")
-    //             {
-    //                 cwd.erase(cwd.find_last_of("/"));
-    //             }
-    //             else
-    //             {
-    //                 cwd += "/" + dirpath;
-    //             }
-    //             current_blk = files[pos].first_blk;
-    //             change_dir();
-    //         }
-    //         else
-    //         {
-    //             std::cout << "cd: " << dirpath << ": Not a directory" << std::endl;
-    //             return -1;
-    //         }
-    //     }
-    //     else
-    //     {
-    //         std::cout << "cd: " << dirpath << ": No such file or directory" << std::endl;
-    //         return -1;
-    //     }
-    // }
-    // return 0;
+    if(current_blk == ROOT_BLOCK && dirpath[0] == '.' && dirpath[1] == '.')
+    {
+        // Do nothing
+    }
+    else
+    {
+        if(tmp_enter(dirpath) == 0)
+        {
+            int pos = find_entry(dirpath);
+
+            if(pos + 1)
+            {
+                if(files[pos].type == TYPE_DIR)
+                {
+                    if(dirpath == "..")
+                    {
+                        cwd.erase(cwd.find_last_of("/"));
+                    }
+                    else
+                    {
+                        cwd += "/" + dirpath;
+                    }
+
+                    current_blk = files[pos].first_blk;
+                    change_dir();
+                }
+                else
+                {
+                    std::cout << "cd: " << dirpath << ": Not a directory" << std::endl;
+                }
+            }
+            else
+            {
+                std::cout << "cd: " << dirpath << ": No such file or directory" << std::endl;
+            }
+        }
+        else
+        {
+            std::cout << "cd: " << dirpath << "': No such file or directory" << std::endl;
+        }
+    }
+
+    return 0;
 }
 
 // pwd prints the full path, i.e., from the root directory, to the current
