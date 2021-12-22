@@ -22,6 +22,7 @@ FS::~FS()
 {
 }
 
+// Looks for first available position in FAT
 void FS::find_free(int16_t &first)
 {
     while (first < BLOCK_SIZE / 2 && fat[first] != FAT_FREE)
@@ -51,6 +52,7 @@ int FS::find_entry(const std::string path)
     return -1;
 }
 
+// Changes directory
 void FS::change_dir()
 {
     disk.read(current_blk, (uint8_t *)files);
@@ -89,9 +91,24 @@ int FS::format()
 // written on the following rows (ended with an empty row)
 int FS::create(std::string filepath)
 {
-    if (filepath.find("/") != std::string::npos)
+    size_t last_slash = filepath.find_last_of("/");
+
+    if (last_slash != filepath.size() - 1)
     {
-        std::string name = cwd + "/" + filepath;
+        std::string name = filepath;
+
+        // Check if cd is required
+        if (last_slash != std::string::npos)
+        {
+            if (cd(filepath.substr(0, last_slash)) != 0)
+            {
+                return 0;
+            }
+            else
+            {
+                name = filepath.substr(last_slash);
+            }
+        }
 
         if (filepath.size() < 57)
         {
@@ -159,12 +176,15 @@ int FS::create(std::string filepath)
         }
         else
         {
-            std::cout << "create: " << filepath << ": No such file or directory" << std::endl;
+            std::cout << "create: " << filepath << ": File name exceeds 56 characters" << std::endl;
         }
     }
     else
     {
-        std::cout << "create: cannot create file '" << filepath << "': Illegal character detected" << std::endl;
+        std::cout << "create: cannot create file '" << filepath << "', did you mean: " << std::endl
+                  << std::endl
+                  << "\tmkdir" << std::endl
+                  << std::endl;
     }
 
     return 0;
@@ -232,8 +252,6 @@ int FS::ls()
 {
     std::cout << "name\t\t\t\ttype\t\t\t\taccessrights\t\t\t\tsize" << std::endl;
 
-    std::string type = "dir";
-    std::string size = "-";
     unsigned int i = 1;
 
     if (current_blk == ROOT_BLOCK)
@@ -741,107 +759,87 @@ int FS::cd(std::string dirpath) // TODO: Add return support for file fault error
 {
     std::string name = dirpath;
 
-    if (current_blk == ROOT_BLOCK && dirpath.substr(0, 2) == "..")
+    if (dirpath[0] == '/') // From root
     {
-        if (dirpath == "..")
-        {
-            // Do nothing
-        }
-        else
-        {
-            if (name[2] == '/')
-            {
-                cd(name.substr(2));
-            }
-            else
-            {
-                std::cout << "cd: " << dirpath << ": No such file or directory" << std::endl;
-            }
-        }
+        current_blk = ROOT_BLOCK;
+        cwd = "/";
+        change_dir();
 
-        return 0;
-    }
-
-    if (current_blk == ROOT_BLOCK && dirpath[0] == '/')
-    {
         if (dirpath == "/")
         {
-            current_blk = ROOT_BLOCK;
-            cwd = "/";
-            change_dir();
+            return 0;
         }
         else
         {
-            cd(name.substr(1));
+            name = name.substr(1);
         }
-
-        return 0;
     }
 
+    uint16_t start_blk = current_blk;
+    std::string start_cwd = cwd;
     size_t end = name.find("/");
 
-    while (end != std::string::npos)
+    while (name[name.size() - 1] == '/') // Remove all '/' at the end
     {
-        name = name.substr(end);
-        end = name.find("/");
-
-        if(name.substr(0, 2) == "..")
-        {
-            if (current_blk != ROOT_BLOCK)
-            {
-                cwd.erase(cwd.find_last_of("/"));
-            }   
-        }
-        else if(name[0] == '/')
-        {
-            if (current_blk != ROOT_BLOCK)
-            {
-                name.erase(0, 1);
-            }   
-        }
+        name.erase(name.end());
     }
 
-    std::string sub_path = name.substr(0, end);
-    int found = find_entry(sub_path);
+    int pos = 0;
 
-    if (found != -1)
+    while (pos != -1)
     {
-        if (files[found].type == TYPE_DIR)
+        pos = find_entry(name.substr(0, end));
+
+        if (pos != -1)
         {
-            if (sub_path == "..")
+            if (files[pos].type == TYPE_DIR)
             {
-                cwd.erase(cwd.find_last_of("/"));
+                name = name.substr(end);
+                end = name.find("/");
+
+                if (name.substr(0, 2) == "..")
+                {
+                    if (current_blk != ROOT_BLOCK)
+                    {
+                        cwd.erase(cwd.find_last_of("/"));
+                    }
+                    else
+                    {
+                        name.erase(0, 2);
+                    }
+                }
+
+                while (name[0] == '/')
+                {
+                    name.erase(0, 1);
+                }
+
+                current_blk = files[pos].first_blk;
+                cwd = files[pos].file_name;
+                change_dir();
             }
             else
             {
-                cwd += "/" + name;
-            }
+                // Go back if fail
+                current_blk = start_blk;
+                cwd = start_cwd;
+                change_dir();
+                std::cout << "cd: " << dirpath << ": Not a directory" << std::endl; // TODO: exception handling
 
-            name.erase(0, end + 1);
-            current_blk = files[found].first_blk;
-            change_dir();
-
-            if (end != std::string::npos)
-            {
-                cd(name);
+                return -1;
             }
         }
         else
         {
+            // Go back if fail
             current_blk = start_blk;
             cwd = start_cwd;
             change_dir();
 
             std::cout << "cd: " << dirpath << ": Not a directory" << std::endl;
-        }
-    }
-    else
-    {
-        std::cout << "cd: " << dirpath << ": No such file or directory" << std::endl;
 
-        current_blk = start_blk;
-        cwd = start_cwd;
-        change_dir();
+            return -1;
+        }
     }
 
     return 0;
