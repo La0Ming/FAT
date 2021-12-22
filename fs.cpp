@@ -95,6 +95,8 @@ int FS::create(std::string filepath)
 
     if (last_slash != filepath.size() - 1)
     {
+        uint16_t start_blk = current_blk;
+        std::string start_cwd = cwd;
         std::string name = filepath;
 
         // Check if cd is required
@@ -178,6 +180,11 @@ int FS::create(std::string filepath)
         {
             std::cout << "create: " << filepath << ": File name exceeds 56 characters" << std::endl;
         }
+
+        // Go back to cwd TODO: Add if statement if necessary
+        current_blk = start_blk;
+        cwd = start_cwd;
+        change_dir();
     }
     else
     {
@@ -193,56 +200,70 @@ int FS::create(std::string filepath)
 // cat <filepath> reads the content of a file and prints it on the screen
 int FS::cat(std::string filepath)
 {
-    std::string name = filepath;
-    size_t last_dir = filepath.find_last_of("/");
+    size_t last_slash = filepath.find_last_of("/");
 
-    if (last_dir != std::string::npos)
+    if (last_slash != filepath.size() - 1)
     {
-        cd(filepath.substr(0, last_dir + 1));
-    }
+        uint16_t start_blk = current_blk;
+        std::string start_cwd = cwd;
+        std::string name = filepath;
+        char buffer[BLOCK_SIZE] = {""};
+        int i = find_entry(name);
 
-    uint16_t start_blk = current_blk;
-    std::string start_cwd = cwd;
-
-    char buffer[BLOCK_SIZE] = {""};
-    int i = find_entry(name);
-
-    if (i + 1)
-    {
-        if ((files[i].access_rights & READ))
+        // Check if cd is required
+        if (last_slash != std::string::npos)
         {
-            if (files[i].type)
+            if (cd(filepath.substr(0, last_slash)) != 0)
             {
-                std::cout << "cat: " << files[i].file_name << ": Is a directory" << std::endl;
+                return 0;
             }
             else
             {
-                int16_t blk_no = files[i].first_blk;
+                name = filepath.substr(last_slash);
+            }
+        }
 
-                while (fat[blk_no] != FAT_EOF)
+        if (i != -1)
+        {
+            if ((files[i].access_rights & READ))
+            {
+                if (files[i].type)
                 {
+                    std::cout << "cat: " << files[i].file_name << ": Is a directory" << std::endl;
+                }
+                else
+                {
+                    int16_t blk_no = files[i].first_blk;
+
+                    while (fat[blk_no] != FAT_EOF)
+                    {
+                        disk.read(blk_no, (uint8_t *)buffer);
+                        std::cout << buffer;
+                        blk_no = fat[blk_no];
+                    }
                     disk.read(blk_no, (uint8_t *)buffer);
                     std::cout << buffer;
-                    blk_no = fat[blk_no];
                 }
-                disk.read(blk_no, (uint8_t *)buffer);
-                std::cout << buffer;
+            }
+            else
+            {
+                std::cout << "cat: " << filepath << ": Permission denied" << std::endl;
             }
         }
         else
         {
-            std::cout << "cat: " << filepath << ": Permission denied" << std::endl;
+            std::cout << "cat: " << filepath << ": No such file or directory" << std::endl;
         }
+
+        // Go back to cwd TODO: Add if statement if necessary
+        current_blk = start_blk;
+        cwd = start_cwd;
+        change_dir();
     }
     else
     {
-        std::cout << "cat: " << filepath << ": No such file or directory" << std::endl;
+        std::cout << "cat: " << filepath << ": Not a directory" << std::endl;
     }
-
-    // Go back to cwd
-    current_blk = start_blk;
-    cwd = start_cwd;
-    change_dir();
 
     return 0;
 }
@@ -296,21 +317,38 @@ int FS::cp(std::string sourcepath, std::string destpath)
 {
     uint16_t start_blk = current_blk;
     std::string start_cwd = cwd;
-    size_t last_src_dir = sourcepath.find_last_of("/");
-
-    if (last_src_dir != std::string::npos)
-    {
-        cd(sourcepath.substr(0, last_src_dir + 1));
-    }
+    size_t last_src_slash = sourcepath.find_last_of("/");
 
     // Save data from current directory
-    int src_pos = find_entry(sourcepath);
+    int src_pos = 0;
     dir_entry sourcefile = files[src_pos];
 
     // Go back to cwd
     current_blk = start_blk;
     cwd = start_cwd;
     change_dir();
+
+    if (last_src_slash != destpath.size() - 1)
+    {
+        uint16_t start_blk = current_blk;
+        std::string start_cwd = cwd;
+        std::string name = filepath;
+        char buffer[BLOCK_SIZE] = {""};
+        int i = find_entry(name);
+
+        // Check if cd is required
+        if (last_src_slash != std::string::npos)
+        {
+            if (cd(filepath.substr(0, last_slash)) != 0)
+            {
+                return 0;
+            }
+            else
+            {
+                name = filepath.substr(last_slash);
+                src_pos = find_entry(sourcepath);
+            }
+        }
 
     if (src_pos == -1)
     {
@@ -320,12 +358,12 @@ int FS::cp(std::string sourcepath, std::string destpath)
     {
         if (sourcefile.access_rights & READ)
         {
-            size_t last_dest_dir = destpath.find_last_of("/");
+            size_t last_dest_slash = destpath.find_last_of("/");
             int dest_pos = find_entry(destpath);
 
-            if (last_src_dir != std::string::npos)
+            if (last_src_slash != std::string::npos)
             {
-                cd(sourcepath.substr(0, last_dest_dir + 1));
+                cd(sourcepath.substr(0, last_dest_slash + 1));
             }
 
             if (dest_pos + 1)
@@ -406,11 +444,11 @@ int FS::mv(std::string sourcepath, std::string destpath)
     std::string start_cwd = cwd;
 
     // cd down to second last source dir
-    size_t last_src_dir = sourcepath.find_last_of("/");
-    if (last_src_dir != std::string::npos)
+    size_t last_src_slash = sourcepath.find_last_of("/");
+    if (last_src_slash != std::string::npos)
     {
-        cd(sourcepath.substr(0, last_src_dir + 1));
-        src_name = sourcepath.substr(last_src_dir);
+        cd(sourcepath.substr(0, last_src_slash + 1));
+        src_name = sourcepath.substr(last_src_slash);
     }
 
     // Save information from the directory
@@ -428,13 +466,13 @@ int FS::mv(std::string sourcepath, std::string destpath)
         change_dir();
 
         // cd down to second last dest directory
-        size_t last_dest_dir = sourcepath.find_last_of("/");
-        if (last_dest_dir != std::string::npos)
+        size_t last_dest_slash = sourcepath.find_last_of("/");
+        if (last_dest_slash != std::string::npos)
         {
-            cd(sourcepath.substr(0, last_src_dir + 1));
+            cd(sourcepath.substr(0, last_src_slash + 1));
         }
 
-        std::string dest_name = destpath.substr(last_dest_dir + 1); // TODO: Add handling for / in name
+        std::string dest_name = destpath.substr(last_dest_slash + 1); // TODO: Add handling for / in name
         int dest_pos = find_entry(dest_name);
 
         if (dest_pos + 1)
@@ -489,12 +527,12 @@ int FS::rm(std::string filepath)
     std::string name = filepath;
     uint16_t start_blk = current_blk;
     std::string start_cwd = cwd;
-    size_t last_dir = filepath.find_last_of("/");
+    size_t last_slash = filepath.find_last_of("/");
 
-    if (last_dir != std::string::npos)
+    if (last_slash != std::string::npos)
     {
-        cd(filepath.substr(0, last_dir + 1));
-        name = filepath.substr(last_dir + 1);
+        cd(filepath.substr(0, last_slash + 1));
+        name = filepath.substr(last_slash + 1);
     }
 
     int pos = find_entry(name);
@@ -576,11 +614,11 @@ int FS::append(std::string filepath1, std::string filepath2)
     std::string rm_path = filepath1;
     uint16_t start_blk = current_blk;
     std::string start_cwd = cwd;
-    size_t last_src_dir = filepath1.find_last_of("/");
+    size_t last_src_slash = filepath1.find_last_of("/");
 
-    if (last_src_dir != std::string::npos)
+    if (last_src_slash != std::string::npos)
     {
-        cd(filepath1.substr(0, last_src_dir + 1));
+        cd(filepath1.substr(0, last_src_slash + 1));
     }
 
     dir_entry file1 = files[src_pos];
@@ -613,11 +651,11 @@ int FS::append(std::string filepath1, std::string filepath2)
         }
         else
         {
-            size_t last_dest_dir = filepath1.find_last_of("/");
+            size_t last_dest_slash = filepath1.find_last_of("/");
 
-            if (last_dest_dir != std::string::npos)
+            if (last_dest_slash != std::string::npos)
             {
-                cd(filepath1.substr(0, last_dest_dir + 1));
+                cd(filepath1.substr(0, last_dest_slash + 1));
             }
 
             if (files[dest_pos].type == TYPE_DIR)
@@ -695,12 +733,12 @@ int FS::mkdir(std::string dirpath)
     std::string name = dirpath;
     uint16_t start_blk = current_blk;
     std::string start_cwd = cwd;
-    size_t last_dir = dirpath.find_last_of("/");
+    size_t last_slash = dirpath.find_last_of("/");
 
-    if (last_dir != std::string::npos)
+    if (last_slash != std::string::npos)
     {
-        cd(dirpath.substr(0, last_dir));
-        name = dirpath.substr(last_dir + 1);
+        cd(dirpath.substr(0, last_slash));
+        name = dirpath.substr(last_slash + 1);
     }
 
     if (name.size() < 57)
@@ -868,11 +906,11 @@ int FS::chmod(std::string accessrights, std::string filepath)
     std::string name = filepath;
     uint16_t start_blk = current_blk;
     std::string start_cwd = cwd;
-    size_t last_dir = filepath.find_last_of("/");
+    size_t last_slash = filepath.find_last_of("/");
 
-    if (last_dir != std::string::npos)
+    if (last_slash != std::string::npos)
     {
-        cd(filepath.substr(0, last_dir + 1));
+        cd(filepath.substr(0, last_slash + 1));
     }
 
     int entry = find_entry(filepath);
