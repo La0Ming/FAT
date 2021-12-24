@@ -815,7 +815,11 @@ int FS::cd(std::string dirpath) // TODO: Add return support for file fault error
             if (current_blk != ROOT_BLOCK)
             {
                 current_blk = files[0].first_blk;
-                cwd.erase(cwd.find_last_of("/"));
+                size_t cwd_slash = cwd.find_last_of("/");
+                if(cwd_slash != std::string::npos)
+                {
+                    cwd.erase(cwd_slash);
+                }
                 change_dir();
             }
             else
@@ -828,7 +832,7 @@ int FS::cd(std::string dirpath) // TODO: Add return support for file fault error
             if(dir_nmr != -1){
                 if(files[dir_nmr].type == TYPE_DIR){
                     current_blk = files[dir_nmr].first_blk;
-                    cwd += new_path[i];
+                    cwd += "/" + new_path[i];
                     change_dir();
                 }
                 else{
