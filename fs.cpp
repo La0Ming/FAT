@@ -113,92 +113,84 @@ int FS::create(std::string filepath)
             }
             else
             {
+                std::cout.clear(); // Clear failbit
                 name = filepath.substr(last_slash + 1);
-                std::cout.clear();
             }
         }
 
-        int i = find_entry(name);
-        if (i == -1)
+        if (name.size() < 57)
         {
-            if (filepath.size() < 57)
+            if (find_entry(name) != -1)
             {
-                if (find_entry(name) + 1)
-                {
-                    std::cout << "create: cannot create file '" << filepath << "': File exists" << std::endl;
-                }
-                else
-                {
-                    if (file_pos < MAX_NO_FILES)
-                    {
-                        int16_t pos = 2;
-                        std::string data = "";
-                        std::string cmp = " ";
-
-                        // Store input
-                        while (cmp != "")
-                        {
-                            std::getline(std::cin, cmp);
-                            data += cmp + "\n";
-                        }
-                        data.pop_back();
-
-                        // Create entry
-                        dir_entry file;
-                        file.size = data.size(); // Newlines are included here
-                        std::strcpy(file.file_name, name.c_str());
-                        file.type = TYPE_FILE;
-                        file.access_rights = (READ | WRITE);
-                        find_free(pos);
-                        file.first_blk = pos;
-                        disk.write(file.first_blk, (uint8_t *)data.substr(0, BLOCK_SIZE - 1).c_str());
-                        files[file_pos++] = file;
-                        disk.write(current_blk, (uint8_t *)files);
-
-                        if (file.size > BLOCK_SIZE && file.size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
-                        {
-                            unsigned int res = file.size / BLOCK_SIZE - 1;
-
-                            if (file.size % BLOCK_SIZE != 0)
-                            {
-                                res++;
-                            }
-
-                            unsigned int next = 1;
-
-                            for (res; res > 0; res--)
-                            {
-                                int16_t prev_pos = pos;
-                                find_free(++pos);
-                                fat[prev_pos] = pos;
-                                disk.write(pos, (uint8_t *)data.substr(BLOCK_SIZE * next, BLOCK_SIZE * (next + 1) - 1).c_str());
-                                next++;
-                            }
-                        }
-
-                        fat[pos] = FAT_EOF;
-                        disk.write(1, (uint8_t *)fat);
-                    }
-                    else
-                    {
-                        std::cout << "create: Disk has no more room for additional data" << std::endl;
-                    }
-                }
+                std::cout << "create: cannot create file '" << filepath << "': File exists" << std::endl;
             }
             else
             {
-                std::cout << "create: " << filepath << ": File name exceeds 56 characters" << std::endl;
-            }
+                if (file_pos < MAX_NO_FILES)
+                {
+                    int16_t pos = 2;
+                    std::string data = "";
+                    std::string cmp = " ";
 
-            // Go back to cwd TODO: Add if statement if necessary
-            current_blk = start_blk;
-            cwd = start_cwd;
-            change_dir();
+                    // Store input
+                    while (cmp != "")
+                    {
+                        std::getline(std::cin, cmp);
+                        data += cmp + "\n";
+                    }
+                    data.pop_back();
+
+                    // Create entry
+                    dir_entry file;
+                    file.size = data.size(); // Newlines are included here
+                    std::strcpy(file.file_name, name.c_str());
+                    file.type = TYPE_FILE;
+                    file.access_rights = (READ | WRITE);
+                    find_free(pos);
+                    file.first_blk = pos;
+                    disk.write(file.first_blk, (uint8_t *)data.substr(0, BLOCK_SIZE - 1).c_str());
+                    files[file_pos++] = file;
+                    disk.write(current_blk, (uint8_t *)files);
+
+                    if (file.size > BLOCK_SIZE && file.size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
+                    {
+                        unsigned int res = file.size / BLOCK_SIZE - 1;
+
+                        if (file.size % BLOCK_SIZE != 0)
+                        {
+                            res++;
+                        }
+
+                        unsigned int next = 1;
+
+                        for (res; res > 0; res--)
+                        {
+                            int16_t prev_pos = pos;
+                            find_free(++pos);
+                            fat[prev_pos] = pos;
+                            disk.write(pos, (uint8_t *)data.substr(BLOCK_SIZE * next, BLOCK_SIZE * (next + 1) - 1).c_str());
+                            next++;
+                        }
+                    }
+
+                    fat[pos] = FAT_EOF;
+                    disk.write(1, (uint8_t *)fat);
+                }
+                else
+                {
+                    std::cout << "create: Disk has no more room for additional data" << std::endl;
+                }
+            }
         }
         else
         {
-            std::cout << "create: cannot create file '" << filepath << "': File exists" << std::endl;
+            std::cout << "create: " << filepath << ": File name exceeds 56 characters" << std::endl;
         }
+
+        // Go back to cwd TODO: Add if statement if necessary
+        current_blk = start_blk;
+        cwd = start_cwd;
+        change_dir();
     }
     else
     {
@@ -226,12 +218,18 @@ int FS::cat(std::string filepath)
         // Check if cd is required
         if (last_slash != std::string::npos)
         {
+            std::cout.setstate(std::ios_base::failbit); // Discard cd error message
+
             if (cd(filepath.substr(0, last_slash)) != 0)
             {
+                std::cout.clear(); // Clear failbit
+                std::cout << "cp: cannot find '" << filepath << "': No such file or directory" << std::endl;
+
                 return 0;
             }
             else
             {
+                std::cout.clear(); // Clear failbit
                 name = filepath.substr(last_slash + 1);
             }
         }
@@ -335,24 +333,33 @@ int FS::cp(std::string sourcepath, std::string destpath)
 
     if (last_src_slash != sourcepath.size() - 1)
     {
-        std::string dest_name = destpath;
         char buffer[BLOCK_SIZE] = {""};
         int src_pos = find_entry(sourcepath);
 
         // Check if cd is required
         if (last_src_slash != std::string::npos)
         {
+            std::cout.setstate(std::ios_base::failbit); // Discard cd error message
+
             if (cd(sourcepath.substr(0, last_src_slash)) != 0)
             {
+                std::cout.clear(); // Clear failbit
+                std::cout << "cp: cannot read '" << sourcepath << "': No such file or directory" << std::endl;
                 return 0;
             }
             else
             {
+                std::cout.clear(); // Clear failbit
                 src_pos = find_entry(sourcepath.substr(last_src_slash + 1));
             }
         }
 
         dir_entry sourcefile = files[src_pos]; // Save data before returning
+
+        // Go back to cwd TODO: Add if statement if necessary
+        current_blk = start_blk;
+        cwd = start_cwd;
+        change_dir();
 
         if (src_pos == -1)
         {
@@ -360,77 +367,107 @@ int FS::cp(std::string sourcepath, std::string destpath)
         }
         else
         {
-            if (sourcefile.access_rights & READ)
+            size_t last_dest_slash = destpath.find_last_of("/");
+
+            if (last_dest_slash != sourcepath.size() - 1)
             {
-                size_t last_dest_slash = destpath.find_last_of("/");
-                int dest_pos = find_entry(destpath);
+                if (sourcefile.access_rights & READ)
+                {
+                    std::string dest_name = destpath;
+                    int dest_pos = find_entry(destpath);
 
-                if (last_src_slash != std::string::npos)
-                {
-                    cd(sourcepath.substr(0, last_dest_slash + 1));
-                }
-
-                if (dest_pos + 1)
-                {
-                    std::cout << "cp: cannot copy to file '" << destpath << "': File exists" << std::endl;
-                }
-                else // Destination file does not exist
-                {
-                    if (file_pos < MAX_NO_FILES && sourcefile.size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
+                    // Check if cd is required
+                    if (last_dest_slash != std::string::npos)
                     {
-                        dir_entry file;
-                        std::strcpy(file.file_name, destpath.c_str());
-                        file.size = sourcefile.size;
-                        file.type = TYPE_FILE;
-                        file.access_rights = (READ | WRITE);
-                        int16_t pos = 2;
-                        find_free(pos);
-                        file.first_blk = pos;
-                        fat[file.first_blk] = FAT_EOF;
+                        std::cout.setstate(std::ios_base::failbit); // Discard cd error message
 
-                        char buffer[BLOCK_SIZE] = {""};
-                        int16_t src_blk_no = sourcefile.first_blk;
-                        int16_t dest_blk_no = file.first_blk;
-
-                        while (fat[src_blk_no] != FAT_EOF)
+                        if (cd(destpath.substr(0, last_dest_slash)) != 0)
                         {
-                            disk.read(src_blk_no, (uint8_t *)buffer);
-                            disk.write(dest_blk_no, (uint8_t *)buffer);
-                            src_blk_no = fat[src_blk_no];
+                            std::cout.clear(); // Clear failbit
+                            std::cout << "cp: cannot create file '" << destpath << "': No such file or directory" << std::endl;
 
-                            if (fat[dest_blk_no] == FAT_EOF)
+                            return 0;
+                        }
+                        else
+                        {
+                            std::cout.clear();
+                            dest_name = destpath.substr(last_dest_slash + 1);
+                        }
+                    }
+
+                    if (dest_pos != -1)
+                    {
+                        std::cout << "cp: cannot copy to file '" << destpath << "': File exists" << std::endl;
+                    }
+                    else // Destination file does not exist
+                    {
+                        if (dest_name.size() < 57)
+                        {
+                            if (file_pos < MAX_NO_FILES && sourcefile.size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
                             {
-                                int16_t prev_blk = dest_blk_no;
-                                find_free(++dest_blk_no);
-                                fat[prev_blk] = dest_blk_no;
-                                fat[dest_blk_no] = FAT_EOF;
+                                dir_entry file;
+                                std::strcpy(file.file_name, dest_name.c_str());
+                                file.size = sourcefile.size;
+                                file.type = TYPE_FILE;
+                                file.access_rights = (READ | WRITE);
+                                int16_t pos = 2;
+                                find_free(pos);
+                                file.first_blk = pos;
+                                fat[file.first_blk] = FAT_EOF;
+
+                                char buffer[BLOCK_SIZE] = {""};
+                                int16_t src_blk_no = sourcefile.first_blk;
+                                int16_t dest_blk_no = file.first_blk;
+
+                                while (fat[src_blk_no] != FAT_EOF)
+                                {
+                                    disk.read(src_blk_no, (uint8_t *)buffer);
+                                    disk.write(dest_blk_no, (uint8_t *)buffer);
+                                    src_blk_no = fat[src_blk_no];
+
+                                    if (fat[dest_blk_no] == FAT_EOF)
+                                    {
+                                        int16_t prev_blk = dest_blk_no;
+                                        find_free(++dest_blk_no);
+                                        fat[prev_blk] = dest_blk_no;
+                                        fat[dest_blk_no] = FAT_EOF;
+                                    }
+                                    else
+                                    {
+                                        dest_blk_no = fat[dest_blk_no];
+                                    }
+                                }
+                                disk.read(src_blk_no, (uint8_t *)buffer);
+                                disk.write(dest_blk_no, (uint8_t *)buffer);
+
+                                files[file_pos++] = file;
+                                disk.write(current_blk, (uint8_t *)files);
+                                disk.write(1, (uint8_t *)fat);
                             }
                             else
                             {
-                                dest_blk_no = fat[dest_blk_no];
+                                std::cout << "cp: Disk has no more room for additional data" << std::endl;
                             }
                         }
-                        disk.read(src_blk_no, (uint8_t *)buffer);
-                        disk.write(dest_blk_no, (uint8_t *)buffer);
-
-                        files[file_pos++] = file;
-                        disk.write(current_blk, (uint8_t *)files);
-                        disk.write(1, (uint8_t *)fat);
-
-                        // Go back to cwd
-                        current_blk = start_blk;
-                        cwd = start_cwd;
-                        change_dir();
+                        else
+                        {
+                            std::cout << "cp: " << destpath << ": File name exceeds 56 characters" << std::endl;
+                        }
                     }
-                    else
-                    {
-                        std::cout << "cp: Disk has no more room for additional data" << std::endl;
-                    }
+
+                    // Go back to cwd TODO: Add if statement if necessary
+                    current_blk = start_blk;
+                    cwd = start_cwd;
+                    change_dir();
+                }
+                else
+                {
+                    std::cout << "cp: cannot open '" << sourcepath << "' for reading: Permission denied" << std::endl;
                 }
             }
             else
             {
-                std::cout << "cp: cannot open '" << sourcepath << "' for reading: Permission denied" << std::endl;
+                std::cout << "cp: cannot copy to '" << destpath << "': Not a file" << std::endl;
             }
         }
     }
@@ -446,28 +483,43 @@ int FS::cp(std::string sourcepath, std::string destpath)
 // or moves the file <sourcepath> to the directory <destpath> (if dest is a directory)
 int FS::mv(std::string sourcepath, std::string destpath)
 {
-    std::string rm_path = sourcepath;
     std::string src_name = sourcepath;
 
     uint16_t start_blk = current_blk;
+    uint16_t src_blk = current_blk;
     std::string start_cwd = cwd;
+    std::string name = sourcepath;
 
     // cd down to second last source dir
     size_t last_src_slash = sourcepath.find_last_of("/");
+
+    // Check if cd is required
     if (last_src_slash != std::string::npos)
     {
-        cd(sourcepath.substr(0, last_src_slash + 1));
-        src_name = sourcepath.substr(last_src_slash);
+        std::cout.setstate(std::ios_base::failbit); // Discard cd error message
+
+        if (cd(sourcepath.substr(0, last_src_slash)) != 0)
+        {
+            std::cout.clear(); // Clear failbit
+            std::cout << "mv: cannot find '" << sourcepath << "': No such file or directory" << std::endl;
+
+            return 0;
+        }
+        else
+        {
+            name = sourcepath.substr(last_src_slash + 1);
+            std::cout.clear();
+        }
     }
 
-    // Save information from the directory
-    uint16_t src_blk = current_blk;
+    // Save information from the source directory
+    src_blk = current_blk;
     dir_entry src_files[MAX_NO_FILES];
     memcpy(src_files, files, BLOCK_SIZE);
     int src_pos = find_entry(src_name);
     dir_entry src_file = files[src_pos];
 
-    if (src_pos + 1)
+    if (src_pos != 1)
     {
         // Go back to cwd
         current_blk = start_blk;
@@ -498,7 +550,7 @@ int FS::mv(std::string sourcepath, std::string destpath)
                     current_blk = start_blk;
                     cwd = start_cwd;
                     change_dir();
-                    rm(rm_path); // Remove file from source directory
+                    rm(sourcepath); // Remove file from source directory
                 }
                 else
                 {
@@ -516,16 +568,16 @@ int FS::mv(std::string sourcepath, std::string destpath)
             strcpy(src_files[src_pos].file_name, dest_name.c_str());
             disk.write(src_blk, (uint8_t *)src_files);
         }
-
-        // Go back to cwd
-        current_blk = start_blk;
-        cwd = start_cwd;
-        change_dir();
     }
     else
     {
         std::cout << "mv: cannot find '" << sourcepath << "': No such file or directory" << std::endl;
     }
+
+    // Go back to cwd
+    current_blk = start_blk;
+    cwd = start_cwd;
+    change_dir();
 
     return 0;
 }
