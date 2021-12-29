@@ -31,7 +31,6 @@ private:
     Disk disk;
     // size of a FAT entry is 2 bytes
     int16_t fat[BLOCK_SIZE/2];
-    //dir_entry files[MAX_NO_FILES];
     dir_entry files[MAX_NO_FILES];
     unsigned int file_pos;
     std::string cwd;
@@ -39,8 +38,7 @@ private:
 
     // Functions
     void find_free(int16_t &first);
-    int find_entry(const std::string path);
-    int tmp_enter(std::string &path);
+    int find_entry(std::string path);
     void change_dir();
 
 public:
