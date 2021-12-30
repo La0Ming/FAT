@@ -56,7 +56,7 @@ Disk::read(unsigned block_no, uint8_t *blk)
         std::cout << "Disk::read(" << block_no << ")\n";
     // check if valid block number
     if (block_no >= no_blocks) {
-        std::cout << "Disk::write - ERROR: Invalid block number (" << block_no << ")\n";
+        std::cout << "Disk::read - ERROR: Invalid block number (" << block_no << ")\n"; // Det stod read här innan :/
         return -1;
     }
     unsigned offset = block_no * BLOCK_SIZE;
