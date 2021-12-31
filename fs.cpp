@@ -344,7 +344,25 @@ int FS::cp(std::string sourcepath, std::string destpath)
 
             if (dest_pos + 1)
             {
-                std::cout << "cp: cannot copy to file '" << destpath << "': File exists" << std::endl;
+                if(files[dest_pos].type == TYPE_DIR)
+                {
+                    if (files[dest_pos].access_rights & WRITE)
+                    {
+                        cd(new_dest_path);
+                        // Add file to sub-directory
+                        files[file_pos++] = sourcefile;
+                        disk.write(current_blk, (uint8_t *)files);
+                    }
+                else
+                {
+                    std::cout << "mv: cannot open '" << destpath << "' for writing: Permission denied" << std::endl;
+                }
+                }
+                else
+                {
+                    std::cout << "cp: cannot copy to file '" << destpath << "': File exists" << std::endl;
+                }
+                
             }
             else // Destination file does not exist
             {
@@ -388,11 +406,6 @@ int FS::cp(std::string sourcepath, std::string destpath)
                     files[file_pos++] = file;
                     disk.write(current_blk, (uint8_t *)files);
                     disk.write(1, (uint8_t *)fat);
-
-                    // Go back to cwd
-                    current_blk = start_blk;
-                    cwd = start_cwd;
-                    change_dir();
                 }
                 else
                 {
@@ -404,6 +417,11 @@ int FS::cp(std::string sourcepath, std::string destpath)
         {
             std::cout << "cp: cannot open '" << sourcepath << "' for reading: Permission denied" << std::endl;
         }
+
+        // Go back to cwd
+        current_blk = start_blk;
+        cwd = start_cwd;
+        change_dir();
     }
     return 0;
 }
@@ -473,7 +491,7 @@ int FS::mv(std::string sourcepath, std::string destpath)
             }
             else
             {
-                std::cout << "mv: cannot move file '" << dest_name << "': File exists" << std::endl;
+                std::cout << "mv: cannot change file name to '" << dest_name << "': File exists" << std::endl;
             }
         }
         else
@@ -482,14 +500,13 @@ int FS::mv(std::string sourcepath, std::string destpath)
             strcpy(src_file.file_name, dest_name.c_str());
 
             // Add file to sub-directory
-            files[file_pos++] = src_file;
+            files[src_pos] = src_file;
             disk.write(current_blk, (uint8_t *)files);
 
             // Go back to cwd
             current_blk = start_blk;
             cwd = start_cwd;
             change_dir();
-            rm(rm_path); // Remove file from source directory
         }
 
         // Go back to cwd
@@ -744,7 +761,7 @@ int FS::mkdir(std::string dirpath)
 
     if (last_slash != -1)
     {
-        cd(dirpath.substr(0, last_slash));
+        cd(dirpath.substr(0, last_slash + 1));
         name = dirpath.substr(last_slash + 1);
     }
 
@@ -843,10 +860,6 @@ int FS::cd(std::string dirpath) // TODO: Add return support for file fault error
                 cwd.erase(last_slash, cwd.size());
                 change_dir();
             }
-            else
-            {
-                //do nothing
-            }
         }
         else{
             int dir_nmr = find_entry(new_path[i]);
@@ -863,7 +876,7 @@ int FS::cd(std::string dirpath) // TODO: Add return support for file fault error
                     cwd = start_cwd;
                     change_dir();
                     std::cout << "cd: " << dirpath << ": Not a directory" << std::endl;
-                    return 0;
+                    return -1;
                 }
             }
             else{
@@ -872,7 +885,7 @@ int FS::cd(std::string dirpath) // TODO: Add return support for file fault error
                 cwd = start_cwd;
                 change_dir();
                 std::cout << "cd: " << dirpath << ": Not a directory" << std::endl;
-                return 0;
+                return -1;
             }
         }
     }
