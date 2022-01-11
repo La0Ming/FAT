@@ -177,7 +177,7 @@ int FS::create(std::string filepath)
         }
         else
         {
-            std::cout << "create: " << filepath << ": File name exceeds 56 characters" << std::endl;
+            std::cout << "create: " << filepath << ": File name exceeds 55 characters" << std::endl;
         }
 
         // Go back to cwd
