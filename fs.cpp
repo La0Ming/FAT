@@ -4,10 +4,6 @@
 #include <regex>
 #include <vector>
 
-// om vi kör cd .. i root ska vi inte få error
-// cp byter map t.ex cp ../file1 file2
-//något fel med namn i cp
-
 FS::FS()
 {
     // Root block
@@ -38,13 +34,14 @@ void FS::find_free(int16_t &first)
 }
 
 // Looks for entry in current block
-int FS::find_entry( std::string path)
+int FS::find_entry(std::string path)
 {
     uint16_t start_blk = current_blk;
     std::string tmp_path = path;
     for (int i = 0; i < file_pos; i++)
     {
-        if(strcmp(files[i].file_name, path.c_str()) == 0){
+        if (strcmp(files[i].file_name, path.c_str()) == 0)
+        {
             return i;
         }
     }
@@ -56,7 +53,7 @@ void FS::change_dir()
 {
     disk.read(current_blk, (uint8_t *)files);
     file_pos = 0;
-    while (file_pos < MAX_NO_FILES && strcmp(files[file_pos].file_name, "") != 0) // TODO: Add better comparison
+    while (file_pos < MAX_NO_FILES && strcmp(files[file_pos].file_name, "") != 0)
     {
         file_pos++;
     }
@@ -67,8 +64,9 @@ int FS::format()
 {
     // Root block
     char empty[1] = "";
-    file_pos = 0;
     cwd = "/";
+    current_blk = ROOT_BLOCK;
+    change_dir();
     disk.write(ROOT_BLOCK, (uint8_t *)empty);
     disk.read(ROOT_BLOCK, (uint8_t *)files);
 
@@ -83,6 +81,8 @@ int FS::format()
         disk.write(i, (uint8_t *)empty);
         fat[i] = FAT_FREE;
     }
+    file_pos = 0;
+
     return 0;
 }
 
@@ -107,11 +107,11 @@ int FS::create(std::string filepath)
             }
             else
             {
-                name = filepath.substr(last_slash+1);
+                name = filepath.substr(last_slash + 1);
             }
         }
 
-        if (filepath.size() < 57)
+        if (filepath.size() < 56)
         {
             if (find_entry(name) + 1)
             {
@@ -180,7 +180,7 @@ int FS::create(std::string filepath)
             std::cout << "create: " << filepath << ": File name exceeds 56 characters" << std::endl;
         }
 
-        // Go back to cwd TODO: Add if statement if necessary
+        // Go back to cwd
         current_blk = start_blk;
         cwd = start_cwd;
         change_dir();
@@ -215,7 +215,7 @@ int FS::cat(std::string filepath)
         }
         else
         {
-            name = filepath.substr(last_slash+1);
+            name = filepath.substr(last_slash + 1);
         }
     }
     int i = find_entry(name);
@@ -252,7 +252,7 @@ int FS::cat(std::string filepath)
         std::cout << "cat: " << filepath << ": No such file or directory" << std::endl;
     }
 
-    // Go back to cwd TODO: Add if statement if necessary
+    // Go back to cwd
     current_blk = start_blk;
     cwd = start_cwd;
     change_dir();
@@ -263,14 +263,9 @@ int FS::cat(std::string filepath)
 // ls lists the content in the currect directory (files and sub-directories)
 int FS::ls()
 {
-    std::cout << "name\t\t\t\ttype\t\t\t\taccessrights\t\t\t\tsize" << std::endl;
+    std::cout << "name\t\t\t\t\t\ttype\t\t\t\taccessrights\t\t\t\tsize" << std::endl;
 
-    unsigned int i = 1;
-
-    if (current_blk == ROOT_BLOCK)
-    {
-        i = 0;
-    }
+    unsigned int i = 0;
 
     for (; i < file_pos; i++)
     {
@@ -297,7 +292,7 @@ int FS::ls()
             rights[2] = 'x';
         }
 
-        std::cout << files[i].file_name << "\t\t\t\t" << type << "\t\t\t\t" << rights << "\t\t\t\t\t" << size << std::endl;
+        std::cout << files[i].file_name << "\t\t\t\t\t\t" << type << "\t\t\t\t" << rights << "\t\t\t\t\t" << size << std::endl;
     }
 
     return 0;
@@ -312,10 +307,10 @@ int FS::cp(std::string sourcepath, std::string destpath)
     std::string name = sourcepath;
     std::string new_dest_path = destpath;
     int last_src_slash = sourcepath.find_last_of("/");
-    if(last_src_slash != -1)
+    if (last_src_slash != -1)
     {
-        cd(sourcepath.substr(0, last_src_slash +1));
-        name = sourcepath.substr(last_src_slash+1);
+        cd(sourcepath.substr(0, last_src_slash + 1));
+        name = sourcepath.substr(last_src_slash + 1);
     }
 
     // Save data from current directory
@@ -336,33 +331,41 @@ int FS::cp(std::string sourcepath, std::string destpath)
         if (sourcefile.access_rights & READ)
         {
             int last_dest_slash = new_dest_path.find_last_of("/");
-            if(last_dest_slash != -1){
+            if (last_dest_slash != -1)
+            {
                 cd(destpath.substr(0, last_dest_slash + 1));
                 new_dest_path = destpath.substr(last_dest_slash + 1);
             }
             int dest_pos = find_entry(new_dest_path);
 
-            if (dest_pos + 1)
+            if (dest_pos + 1) // If destination path is found
             {
-                if(files[dest_pos].type == TYPE_DIR)
+                if (files[dest_pos].type == TYPE_DIR)
                 {
                     if (files[dest_pos].access_rights & WRITE)
                     {
                         cd(new_dest_path);
-                        // Add file to sub-directory
-                        files[file_pos++] = sourcefile;
-                        disk.write(current_blk, (uint8_t *)files);
+
+                        if (find_entry(name) + 1) // If source file already exists in directory
+                        {
+                            std::cout << "cp: cannot copy to directory '" << destpath << "': File exists" << std::endl;
+                        }
+                        else
+                        {
+                            // Add file to sub-directory
+                            files[file_pos++] = sourcefile;
+                            disk.write(current_blk, (uint8_t *)files);
+                        }
                     }
-                else
-                {
-                    std::cout << "mv: cannot open '" << destpath << "' for writing: Permission denied" << std::endl;
-                }
+                    else
+                    {
+                        std::cout << "cp: cannot open '" << destpath << "' for writing: Permission denied" << std::endl;
+                    }
                 }
                 else
                 {
                     std::cout << "cp: cannot copy to file '" << destpath << "': File exists" << std::endl;
                 }
-                
             }
             else // Destination file does not exist
             {
@@ -442,7 +445,7 @@ int FS::mv(std::string sourcepath, std::string destpath)
     if (last_src_slash != -1)
     {
         cd(sourcepath.substr(0, last_src_slash + 1));
-        src_name = sourcepath.substr(last_src_slash+1);
+        src_name = sourcepath.substr(last_src_slash + 1);
     }
 
     // Save information from the directory
@@ -462,7 +465,7 @@ int FS::mv(std::string sourcepath, std::string destpath)
         if (last_dest_slash != -1)
         {
             cd(destpath.substr(0, last_dest_slash + 1));
-            dest_name = destpath.substr(last_dest_slash + 1); // TODO: Add handling for / in name
+            dest_name = destpath.substr(last_dest_slash + 1);
         }
 
         int dest_pos = find_entry(dest_name);
@@ -474,15 +477,23 @@ int FS::mv(std::string sourcepath, std::string destpath)
                 if (files[dest_pos].access_rights & WRITE)
                 {
                     cd(dest_name);
-                    // Add file to sub-directory
-                    files[file_pos++] = src_file;
-                    disk.write(current_blk, (uint8_t *)files);
 
-                    // Go back to cwd
-                    current_blk = start_blk;
-                    cwd = start_cwd;
-                    change_dir();
-                    rm(rm_path); // Remove file from source directory
+                    if(find_entry(src_name) + 1)
+                    {
+                        std::cout << "mv: cannot move to directory '" << destpath << "': File exists" << std::endl;
+                    }
+                    else
+                    {
+                        // Add file to sub-directory
+                        files[file_pos++] = src_file;
+                        disk.write(current_blk, (uint8_t *)files);
+
+                        // Go back to cwd
+                        current_blk = start_blk;
+                        cwd = start_cwd;
+                        change_dir();
+                        rm(rm_path); // Remove file from source directory
+                    }
                 }
                 else
                 {
@@ -495,7 +506,7 @@ int FS::mv(std::string sourcepath, std::string destpath)
             }
         }
         else
-        {            
+        {
             // Change file name and save to source block
             strcpy(src_file.file_name, dest_name.c_str());
 
@@ -584,7 +595,7 @@ int FS::rm(std::string filepath)
             }
 
             file_pos--;
-            
+
             while (fat[blk_no] != FAT_EOF)
             {
                 uint16_t prev_blk = blk_no;
@@ -625,13 +636,13 @@ int FS::rm(std::string filepath)
 // the end of file <filepath2>. The file <filepath1> is unchanged.
 int FS::append(std::string filepath1, std::string filepath2)
 {
-    
+
     std::string rm_path = filepath1;
     uint16_t start_blk = current_blk;
     std::string start_cwd = cwd;
     std::string path_1 = filepath1;
     std::string path_2 = filepath2;
-    
+
     int last_src_slash = filepath1.find_last_of("/");
 
     if (last_src_slash != -1)
@@ -818,14 +829,14 @@ int FS::mkdir(std::string dirpath)
 }
 
 // cd <dirpath> changes the current (working) directory to the directory named <dirpath>
-int FS::cd(std::string dirpath) // TODO: Add return support for file fault error message
+int FS::cd(std::string dirpath)
 {
     uint16_t start_blk = current_blk;
     std::string dir_name = dirpath;
     std::string start_cwd = cwd;
     while (dir_name[dir_name.size() - 1] == '/' && dir_name.size() > 1) // Remove all '/' at the end
     {
-        dir_name.erase(dir_name.size()-1);
+        dir_name.erase(dir_name.size() - 1);
     }
     if (dir_name[0] == '/') // From root
     {
@@ -846,14 +857,17 @@ int FS::cd(std::string dirpath) // TODO: Add return support for file fault error
     std::string split_token = "/";
     std::string tmp = "..";
     int pos = 0;
-    while ((pos = dir_name.find(split_token)) != -1) {
+    while ((pos = dir_name.find(split_token)) != -1)
+    {
         new_path.push_back(dir_name.substr(0, pos));
         dir_name.erase(0, pos + split_token.length());
     }
     new_path.push_back(dir_name);
-    for(int i=0; i < new_path.size(); i++){
-        if(strcmp(tmp.c_str(), new_path[i].c_str()) == 0){
-            if(current_blk != ROOT_BLOCK)
+    for (int i = 0; i < new_path.size(); i++)
+    {
+        if (strcmp(tmp.c_str(), new_path[i].c_str()) == 0)
+        {
+            if (current_blk != ROOT_BLOCK)
             {
                 int last_slash = cwd.find_last_of("/");
                 current_blk = files[0].first_blk;
@@ -861,16 +875,20 @@ int FS::cd(std::string dirpath) // TODO: Add return support for file fault error
                 change_dir();
             }
         }
-        else{
+        else
+        {
             int dir_nmr = find_entry(new_path[i]);
-            if(dir_nmr != -1){
-                if(files[dir_nmr].type == TYPE_DIR){
+            if (dir_nmr != -1)
+            {
+                if (files[dir_nmr].type == TYPE_DIR)
+                {
                     current_blk = files[dir_nmr].first_blk;
                     cwd += "/";
                     cwd += new_path[i];
                     change_dir();
                 }
-                else{
+                else
+                {
                     // Go back if fail
                     current_blk = start_blk;
                     cwd = start_cwd;
@@ -879,7 +897,8 @@ int FS::cd(std::string dirpath) // TODO: Add return support for file fault error
                     return -1;
                 }
             }
-            else{
+            else
+            {
                 // Go back if fail
                 current_blk = start_blk;
                 cwd = start_cwd;
