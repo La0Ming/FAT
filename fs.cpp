@@ -177,7 +177,7 @@ int FS::create(std::string filepath)
         }
         else
         {
-            std::cout << "create: " << filepath << ": File name exceeds 55 characters" << std::endl;
+            std::cout << "create: " << filepath << ": Name exceeds 55 characters" << std::endl;
         }
 
         // Go back to cwd
@@ -371,44 +371,51 @@ int FS::cp(std::string sourcepath, std::string destpath)
             {
                 if (file_pos < MAX_NO_FILES && sourcefile.size < BLOCK_SIZE * (MAX_NO_FILES - file_pos - 1))
                 {
-                    dir_entry file;
-                    std::strcpy(file.file_name, new_dest_path.c_str());
-                    file.size = sourcefile.size;
-                    file.type = TYPE_FILE;
-                    file.access_rights = (READ | WRITE);
-                    int16_t pos = 2;
-                    find_free(pos);
-                    file.first_blk = pos;
-                    fat[file.first_blk] = FAT_EOF;
-
-                    char buffer[BLOCK_SIZE] = {""};
-                    int16_t src_blk_no = sourcefile.first_blk;
-                    int16_t dest_blk_no = file.first_blk;
-
-                    while (fat[src_blk_no] != FAT_EOF)
+                    if (new_dest_path.size() < 56)
                     {
+                        dir_entry file;
+                        std::strcpy(file.file_name, new_dest_path.c_str());
+                        file.size = sourcefile.size;
+                        file.type = TYPE_FILE;
+                        file.access_rights = (READ | WRITE);
+                        int16_t pos = 2;
+                        find_free(pos);
+                        file.first_blk = pos;
+                        fat[file.first_blk] = FAT_EOF;
+
+                        char buffer[BLOCK_SIZE] = {""};
+                        int16_t src_blk_no = sourcefile.first_blk;
+                        int16_t dest_blk_no = file.first_blk;
+
+                        while (fat[src_blk_no] != FAT_EOF)
+                        {
+                            disk.read(src_blk_no, (uint8_t *)buffer);
+                            disk.write(dest_blk_no, (uint8_t *)buffer);
+                            src_blk_no = fat[src_blk_no];
+
+                            if (fat[dest_blk_no] == FAT_EOF)
+                            {
+                                int16_t prev_blk = dest_blk_no;
+                                find_free(++dest_blk_no);
+                                fat[prev_blk] = dest_blk_no;
+                                fat[dest_blk_no] = FAT_EOF;
+                            }
+                            else
+                            {
+                                dest_blk_no = fat[dest_blk_no];
+                            }
+                        }
                         disk.read(src_blk_no, (uint8_t *)buffer);
                         disk.write(dest_blk_no, (uint8_t *)buffer);
-                        src_blk_no = fat[src_blk_no];
 
-                        if (fat[dest_blk_no] == FAT_EOF)
-                        {
-                            int16_t prev_blk = dest_blk_no;
-                            find_free(++dest_blk_no);
-                            fat[prev_blk] = dest_blk_no;
-                            fat[dest_blk_no] = FAT_EOF;
-                        }
-                        else
-                        {
-                            dest_blk_no = fat[dest_blk_no];
-                        }
+                        files[file_pos++] = file;
+                        disk.write(current_blk, (uint8_t *)files);
+                        disk.write(1, (uint8_t *)fat);
                     }
-                    disk.read(src_blk_no, (uint8_t *)buffer);
-                    disk.write(dest_blk_no, (uint8_t *)buffer);
-
-                    files[file_pos++] = file;
-                    disk.write(current_blk, (uint8_t *)files);
-                    disk.write(1, (uint8_t *)fat);
+                    else
+                    {
+                        std::cout << "cp: " << new_dest_path << ": name exceeds 55 characters" << std::endl;
+                    }
                 }
                 else
                 {
@@ -478,7 +485,7 @@ int FS::mv(std::string sourcepath, std::string destpath)
                 {
                     cd(dest_name);
 
-                    if(find_entry(src_name) + 1)
+                    if (find_entry(src_name) + 1)
                     {
                         std::cout << "mv: cannot move to directory '" << destpath << "': File exists" << std::endl;
                     }
@@ -507,17 +514,24 @@ int FS::mv(std::string sourcepath, std::string destpath)
         }
         else
         {
-            // Change file name and save to source block
-            strcpy(src_file.file_name, dest_name.c_str());
+            if (dest_name.size() < 56)
+            {
+                // Change file name and save to source block
+                strcpy(src_file.file_name, dest_name.c_str()); // TODO: Handle buffer overflow
 
-            // Add file to sub-directory
-            files[src_pos] = src_file;
-            disk.write(current_blk, (uint8_t *)files);
+                // Add file to sub-directory
+                files[src_pos] = src_file;
+                disk.write(current_blk, (uint8_t *)files);
 
-            // Go back to cwd
-            current_blk = start_blk;
-            cwd = start_cwd;
-            change_dir();
+                // Go back to cwd
+                current_blk = start_blk;
+                cwd = start_cwd;
+                change_dir();
+            }
+            else
+            {
+                std::cout << "mv: " << dest_name << ": name exceeds 55 characters" << std::endl;
+            }
         }
 
         // Go back to cwd
@@ -776,7 +790,7 @@ int FS::mkdir(std::string dirpath)
         name = dirpath.substr(last_slash + 1);
     }
 
-    if (name.size() < 57)
+    if (name.size() < 56)
     {
         if (find_entry(name) == -1)
         {
@@ -818,7 +832,7 @@ int FS::mkdir(std::string dirpath)
     }
     else
     {
-        std::cout << "mkdir: " << name << ": file name too big" << std::endl;
+        std::cout << "mkdir: " << name << ": name exceeds 55 characters" << std::endl;
     }
 
     current_blk = start_blk;
